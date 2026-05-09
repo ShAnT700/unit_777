@@ -1,0 +1,16 @@
+{
+  "name": "unit-777",
+  "version": "1.0.0",
+  "description": "Daily work tracking and invoicing application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "better-sqlite3": "^11.7.0",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3"
+  }
+}
