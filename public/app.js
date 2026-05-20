@@ -8,7 +8,7 @@ let projects = [], activeProjectId = null, dateGroups = [], pointNameCache = [],
 
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme(localStorage.getItem('theme') || 'dark');
-  if (token) { showDashboard(); loadProjects(); } else showAuth();
+  if (token) { showDashboard(); loadProjects(); initThursdayPulse(); } else showAuth();
   document.addEventListener('click', e => {
     if (!e.target.closest('.point-name-wrapper')) closeAllAutocomplete();
     if (!e.target.closest('.map-dropdown-wrap')) closeMapDropdown();
@@ -27,8 +27,8 @@ function applyTheme(t) {
 }
 
 // ─── Views ───
-function showAuth() { document.getElementById('auth-view').style.display = ''; document.getElementById('dashboard-view').style.display = 'none'; }
-function showDashboard() { document.getElementById('auth-view').style.display = 'none'; document.getElementById('dashboard-view').style.display = ''; document.getElementById('username-display').textContent = username || ''; }
+function showAuth() { document.getElementById('auth-view').style.display = ''; document.getElementById('dashboard-view').style.display = 'none'; document.getElementById('account-view').style.display = 'none'; }
+function showDashboard() { document.getElementById('auth-view').style.display = 'none'; document.getElementById('dashboard-view').style.display = ''; document.getElementById('account-view').style.display = 'none'; document.getElementById('username-display').textContent = username || ''; }
 
 // ─── Auth ───
 function switchAuthTab(mode) { authMode = mode; document.getElementById('tab-login').classList.toggle('active', mode === 'login'); document.getElementById('tab-register').classList.toggle('active', mode === 'register'); document.getElementById('auth-btn-text').textContent = mode === 'login' ? 'Sign In' : 'Create Account'; document.getElementById('auth-error').style.display = 'none'; }
@@ -238,6 +238,126 @@ function confirmDeletePoint(id, dgId) { showConfirm('Delete Point?', 'This will 
 function showConfirm(title, msg, onOk) { const ov = document.createElement('div'); ov.className = 'confirm-overlay'; ov.innerHTML = `<div class="confirm-dialog"><h3>${title}</h3><p>${msg}</p><div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="confirm-cancel">Cancel</button><button class="btn btn-danger btn-sm" id="confirm-ok">Delete</button></div></div>`; document.body.appendChild(ov); ov.querySelector('#confirm-cancel').onclick = () => ov.remove(); ov.querySelector('#confirm-ok').onclick = () => { ov.remove(); onOk(); }; ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); }); }
 function showPrompt(title, msg, def, onOk) { const ov = document.createElement('div'); ov.className = 'confirm-overlay'; ov.innerHTML = `<div class="confirm-dialog"><h3>${title}</h3><p>${msg}</p><input class="prompt-input" type="text" value="${escA(def)}" /><div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="prompt-cancel">Cancel</button><button class="btn btn-primary btn-sm" id="prompt-ok">OK</button></div></div>`; document.body.appendChild(ov); const inp = ov.querySelector('.prompt-input'); setTimeout(() => { inp.focus(); inp.select(); }, 50); inp.addEventListener('keydown', e => { if (e.key === 'Enter') { ov.remove(); onOk(inp.value); } }); ov.querySelector('#prompt-cancel').onclick = () => ov.remove(); ov.querySelector('#prompt-ok').onclick = () => { ov.remove(); onOk(inp.value); }; ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); }); }
 function showToast(type, msg) { const c = document.getElementById('toast-container'), t = document.createElement('div'); t.className = `toast ${type}`; t.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✕'}</span><span>${esc(msg)}</span>`; c.appendChild(t); setTimeout(() => { t.classList.add('hide'); setTimeout(() => t.remove(), 300); }, 3000); }
+
+// ─── Weekly Report (Fri→Thu) ───
+let wrOffset = 0;
+function getWeekRange(offset) {
+  const now = new Date(); now.setDate(now.getDate() + offset * 7);
+  const day = now.getDay(); // 0=Sun
+  const thuDiff = day <= 4 ? (4 - day) : (4 - day + 7);
+  const thu = new Date(now); thu.setDate(now.getDate() + thuDiff);
+  const fri = new Date(thu); fri.setDate(thu.getDate() - 6);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return { start: fmt(fri), end: fmt(thu) };
+}
+async function openWeeklyReport() {
+  if (!activeProjectId) { showToast('error', 'Select a map first'); return; }
+  wrOffset = 0; loadWeeklyReport();
+  document.getElementById('weekly-report-modal').style.display = ''; document.body.style.overflow = 'hidden';
+}
+function closeWeeklyReport() {
+  document.getElementById('weekly-report-modal').style.display = 'none'; document.body.style.overflow = '';
+}
+function wrNavigate(dir) { wrOffset += dir; loadWeeklyReport(); }
+async function loadWeeklyReport() {
+  const { start, end } = getWeekRange(wrOffset);
+  const proj = projects.find(p => p.id === activeProjectId);
+  document.getElementById('wr-map-name').textContent = proj ? proj.name : '';
+  document.getElementById('wr-period').textContent = `${formatDate(start)} → ${formatDate(end)}`;
+  try {
+    const data = await api('GET', `/api/projects/${activeProjectId}/weekly-report?start=${start}&end=${end}`);
+    renderWeeklyReport(data, start, end);
+  } catch (e) { showToast('error', e.message); }
+}
+function renderWeeklyReport(days, start, end) {
+  const body = document.getElementById('wr-body');
+  if (!days.length) { body.innerHTML = '<div class="empty-state"><h3>No work entries this week</h3><p>No points recorded from ' + fmtShort(start) + ' to ' + fmtShort(end) + '</p></div>'; return; }
+  let weekTotal = 0, totalPoints = 0, totalUnits = 0;
+  let html = '';
+  for (const dg of days) {
+    let dayTotal = 0;
+    html += `<div class="wr-day-header">${formatDate(dg.work_date)}</div>`;
+    for (const pt of dg.points) {
+      totalPoints++;
+      let ptLine = `<div class="wr-point"><span class="wr-point-name">${esc(pt.name)}</span>`;
+      if (pt.units.length) {
+        ptLine += '<div class="wr-units">';
+        for (const u of pt.units) {
+          totalUnits++;
+          const price = (UNIT_PRICES[u.unit_type] || 0) * u.quantity;
+          dayTotal += price;
+          ptLine += `<span class="wr-unit">${UNIT_LABELS[u.unit_type] || u.unit_type} ×${u.quantity}</span>`;
+        }
+        ptLine += '</div>';
+      }
+      ptLine += '</div>';
+      html += ptLine;
+    }
+    weekTotal += dayTotal;
+    html += `<div class="wr-day-total">Day: $${dayTotal.toFixed(2)}</div>`;
+  }
+  html += `<div class="wr-footer"><div class="wr-summary">${totalPoints} points · ${totalUnits} units</div><div class="wr-week-total">Week Total: $${fmtMoney(weekTotal)}</div></div>`;
+  html += `<button class="copy-excel-btn wr-copy-btn" onclick="copyWeeklyReport()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy All for Excel</button>`;
+  body.innerHTML = html;
+}
+async function copyWeeklyReport() {
+  const { start, end } = getWeekRange(wrOffset);
+  try {
+    const data = await api('GET', `/api/projects/${activeProjectId}/weekly-report?start=${start}&end=${end}`);
+    let tsv = '';
+    for (const dg of data) {
+      for (const pt of dg.points) {
+        if (!pt.units.length) { tsv += `${pt.name}\t\t\n`; continue; }
+        for (let i = 0; i < pt.units.length; i++) {
+          const u = pt.units[i];
+          tsv += i === 0 ? `${pt.name}\t${u.unit_type}\t${u.quantity}\n` : `\t${u.unit_type}\t${u.quantity}\n`;
+        }
+      }
+    }
+    await clipCopy(tsv); showToast('success', 'Week copied to clipboard!');
+  } catch (e) { showToast('error', e.message); }
+}
+function initThursdayPulse() {
+  const btn = document.getElementById('weekly-report-btn');
+  if (btn && new Date().getDay() === 4) btn.classList.add('thursday-pulse');
+}
+
+// ─── Account / Stats ───
+async function showAccount() {
+  document.getElementById('dashboard-view').style.display = 'none';
+  document.getElementById('account-view').style.display = '';
+  document.getElementById('account-username').textContent = username || '';
+  loadStats();
+}
+function closeAccount() {
+  document.getElementById('account-view').style.display = 'none';
+  document.getElementById('dashboard-view').style.display = '';
+}
+async function loadStats() {
+  try { const data = await api('GET', '/api/stats'); renderStats(data); }
+  catch (e) { showToast('error', e.message); }
+}
+function renderStats(data) {
+  const { monthly, weekly } = data;
+  const allTime = monthly.reduce((s, m) => s + (m.total || 0), 0);
+  const now = new Date();
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const thisMonthData = monthly.find(m => m.period === thisMonthKey);
+  const thisWeekData = weekly.length > 0 ? weekly[0] : null;
+  document.getElementById('stats-summary').innerHTML = `
+    <div class="stat-card"><div class="stat-label">All Time</div><div class="stat-value">$${fmtMoney(allTime)}</div></div>
+    <div class="stat-card accent"><div class="stat-label">This Month</div><div class="stat-value">$${fmtMoney(thisMonthData ? thisMonthData.total : 0)}</div></div>
+    <div class="stat-card"><div class="stat-label">This Week</div><div class="stat-value">$${fmtMoney(thisWeekData ? thisWeekData.total : 0)}</div></div>`;
+  const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('monthly-stats').innerHTML = monthly.length === 0
+    ? '<p class="stats-empty">No data yet</p>'
+    : monthly.map(m => { const [y,mo] = m.period.split('-'); return `<div class="stats-row"><div class="stats-row-period">${MN[parseInt(mo)-1]} ${y}</div><div class="stats-row-meta">${m.days} day${m.days!==1?'s':''} \u00b7 ${m.points} pts</div><div class="stats-row-total">$${fmtMoney(m.total)}</div></div>`; }).join('');
+  document.getElementById('weekly-stats').innerHTML = weekly.length === 0
+    ? '<p class="stats-empty">No data yet</p>'
+    : weekly.map(w => { return `<div class="stats-row"><div class="stats-row-period">${fmtShort(w.week_start)} \u2013 ${fmtShort(w.week_end)}</div><div class="stats-row-meta">${w.days} day${w.days!==1?'s':''} \u00b7 ${w.points} pts</div><div class="stats-row-total">$${fmtMoney(w.total)}</div></div>`; }).join('');
+}
+function fmtMoney(n) { return (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtShort(ds) { if (!ds) return ''; const [y, m, d] = ds.split('-'); return `${parseInt(m)}/${parseInt(d)}`; }
 
 // ─── Utilities ───
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }

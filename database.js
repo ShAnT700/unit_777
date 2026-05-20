@@ -210,6 +210,46 @@ const getUnitOwner = db.prepare(`
   WHERE u.id = ?
 `);
 
+// ─── Stats Queries ─────────────────────────────────────────────────────────────
+
+const getMonthlyStats = db.prepare(`
+  SELECT
+    strftime('%Y-%m', dg.work_date) as period,
+    COUNT(DISTINCT dg.id) as days,
+    COUNT(DISTINCT pt.id) as points,
+    COALESCE(SUM(u.quantity * CASE u.unit_type
+      WHEN 'UNIT805' THEN 42.19 WHEN 'UNIT806' THEN 45.56
+      WHEN 'UNIT807' THEN 64.12 WHEN 'UNIT808' THEN 27.00
+      WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT838' THEN 37.12
+      WHEN '96 LCP Placement' THEN 135.00 WHEN '288 LCP Placement' THEN 135.00
+      ELSE 0 END), 0) as total
+  FROM date_groups dg
+  JOIN points pt ON pt.date_group_id = dg.id
+  LEFT JOIN units u ON u.point_id = pt.id
+  WHERE dg.user_id = ?
+  GROUP BY period ORDER BY period DESC LIMIT 12
+`);
+
+const getWeeklyStats = db.prepare(`
+  SELECT
+    strftime('%Y-W%W', dg.work_date) as period,
+    MIN(dg.work_date) as week_start,
+    MAX(dg.work_date) as week_end,
+    COUNT(DISTINCT dg.id) as days,
+    COUNT(DISTINCT pt.id) as points,
+    COALESCE(SUM(u.quantity * CASE u.unit_type
+      WHEN 'UNIT805' THEN 42.19 WHEN 'UNIT806' THEN 45.56
+      WHEN 'UNIT807' THEN 64.12 WHEN 'UNIT808' THEN 27.00
+      WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT838' THEN 37.12
+      WHEN '96 LCP Placement' THEN 135.00 WHEN '288 LCP Placement' THEN 135.00
+      ELSE 0 END), 0) as total
+  FROM date_groups dg
+  JOIN points pt ON pt.date_group_id = dg.id
+  LEFT JOIN units u ON u.point_id = pt.id
+  WHERE dg.user_id = ?
+  GROUP BY period ORDER BY period DESC LIMIT 12
+`);
+
 // ─── Composite Query: Full data tree for a project ─────────────────────────────
 
 function getFullDataByProject(userId, projectId) {
@@ -254,4 +294,6 @@ module.exports = {
   deleteUnit,
   getUnitOwner,
   getFullDataByProject,
+  getMonthlyStats,
+  getWeeklyStats,
 };

@@ -402,6 +402,46 @@ app.delete('/api/units/:id', authMiddleware, (req, res) => {
   }
 });
 
+// ─── Weekly Report Route ────────────────────────────────────────────────────────
+
+app.get('/api/projects/:projectId/weekly-report', authMiddleware, (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { start, end } = req.query;
+    if (!start || !end) {
+      return res.status(400).json({ error: 'start and end dates are required' });
+    }
+    const data = db.getDateGroupsByProject.all(req.userId, Number(projectId));
+    const filtered = data
+      .filter(dg => dg.work_date >= start && dg.work_date <= end)
+      .sort((a, b) => a.work_date > b.work_date ? 1 : -1);
+    const result = filtered.map(dg => {
+      const points = db.getPointsByDateGroup.all(dg.id).map(pt => {
+        const units = db.getUnitsByPoint.all(pt.id);
+        return { ...pt, units };
+      });
+      return { ...dg, points };
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('Weekly report error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Stats Routes ───────────────────────────────────────────────────────────────
+
+app.get('/api/stats', authMiddleware, (req, res) => {
+  try {
+    const monthly = db.getMonthlyStats.all(req.userId);
+    const weekly = db.getWeeklyStats.all(req.userId);
+    res.json({ monthly, weekly });
+  } catch (err) {
+    console.error('Get stats error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ─── SPA Fallback ───────────────────────────────────────────────────────────────
 
 app.get('*', (req, res) => {
