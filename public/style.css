@@ -75,7 +75,7 @@ body {
 .auth-logo { text-align:center; margin-bottom:32px; }
 .logo-icon { display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; color:var(--accent); margin-bottom:12px; }
 .logo-icon svg { width:40px; height:40px; }
-.logo-icon-sm { width:32px; height:32px; } .logo-icon-sm svg { width:24px; height:24px; }
+.logo-icon-sm { width:24px; height:24px; } .logo-icon-sm svg { width:18px; height:18px; }
 .auth-logo h1 { font-size:1.75rem; font-weight:800; letter-spacing:-0.5px; }
 .auth-subtitle { color:var(--text-secondary); font-size:0.9rem; margin-top:4px; }
 .auth-tabs { display:flex; gap:4px; margin-bottom:24px; background:var(--bg-input); border-radius:var(--radius-sm); padding:4px; }
@@ -93,7 +93,7 @@ body {
 .topbar { position:sticky; top:0; z-index:100; background:var(--topbar-bg); backdrop-filter:blur(16px); border-bottom:1px solid var(--border); }
 .topbar-inner { max-width:960px; margin:0 auto; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; }
 .topbar-brand { display:flex; align-items:center; gap:8px; }
-.topbar-title { font-size:1.1rem; font-weight:700; letter-spacing:-0.3px; }
+.topbar-title { font-size:0.95rem; font-weight:700; letter-spacing:-0.3px; }
 .topbar-actions { display:flex; align-items:center; gap:8px; }
 .username-badge { padding:4px 10px; border-radius:20px; font-size:0.75rem; font-weight:600; background:hsla(210,100%,60%,0.12); color:var(--accent); border:1px solid hsla(210,100%,60%,0.2); }
 
@@ -111,6 +111,7 @@ body {
 .map-dropdown-add { display:flex; align-items:center; gap:6px; padding:10px 14px; font-size:0.82rem; font-weight:600; color:var(--accent); cursor:pointer; transition:background var(--transition); border-top:1px solid var(--border); }
 .map-dropdown-add:hover { background:var(--accent-glow); }
 .map-dropdown-add svg { flex-shrink:0; }
+.map-point-count { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:18px; padding:0 5px; border-radius:9px; background:var(--accent-glow); color:var(--accent); font-size:0.7rem; font-weight:700; margin-right:6px; }
 
 /* ── Main Content ── */
 .main-content { padding:20px 0 80px; }
@@ -151,7 +152,7 @@ body {
 .date-input::-webkit-calendar-picker-indicator { filter:invert(0.7); cursor:pointer; }
 
 /* ── Point Card ── */
-.point-card { background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:12px; animation:fadeInUp 0.3s ease; transition:border-color var(--transition); }
+.point-card { background:var(--bg-card); border:1px solid var(--border-light); border-left:3px solid var(--accent); border-radius:var(--radius-md); margin-bottom:12px; animation:fadeInUp 0.3s ease; transition:border-color var(--transition); box-shadow:var(--shadow-sm); }
 .point-card:hover { border-color:var(--border-light); }
 .point-header { display:flex; align-items:center; gap:8px; padding:12px; border-bottom:1px solid var(--border); }
 .point-icon { color:var(--amber); flex-shrink:0; }
@@ -160,6 +161,7 @@ body {
 .point-name-input:hover { border-color:var(--border); }
 .point-name-input:focus { border-color:var(--accent); background:var(--bg-input); box-shadow:0 0 0 3px var(--accent-glow); }
 .point-actions { display:flex; gap:2px; flex-shrink:0; }
+.point-number { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:26px; padding:0 6px; border-radius:6px; background:var(--accent); color:#fff; font-size:0.75rem; font-weight:700; flex-shrink:0; letter-spacing:-0.3px; }
 
 /* ── Feet Row ── */
 .feet-row { display:flex; align-items:center; gap:6px; padding:8px 12px; border-bottom:1px solid var(--border); flex-wrap:nowrap; }
@@ -167,6 +169,11 @@ body {
 .feet-input { width:64px; padding:5px 6px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-input); color:var(--text-primary); font-family:inherit; font-size:0.82rem; font-weight:500; outline:none; transition:all var(--transition); text-align:center; }
 .feet-input:focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-glow); }
 .feet-sep { color:var(--text-muted); font-weight:600; font-size:0.9rem; }
+/* ── Note ── */
+.note-row { padding:8px 12px; border-bottom:1px solid var(--border); }
+.note-input { width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-input); color:var(--text-primary); font-family:inherit; font-size:0.82rem; outline:none; transition:all var(--transition); resize:vertical; min-height:36px; max-height:120px; line-height:1.4; }
+.note-input:focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-glow); }
+.note-input::placeholder { color:var(--text-muted); }
 
 /* ── Copy Name / Copy Point Buttons ── */
 .copy-name-btn, .copy-point-btn { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border:none; border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; transition:all var(--transition); padding:0; flex-shrink:0; position:relative; }
@@ -225,7 +232,9 @@ body {
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .topbar-inner { padding:8px 12px; }
-  .topbar-title { font-size:0.95rem; }
+  .topbar-title { font-size:0.82rem; }
+  .topbar-brand { gap:4px; }
+  .logo-icon-sm { width:20px; height:20px; } .logo-icon-sm svg { width:15px; height:15px; }
   .logout-text { display:none; }
   #logout-btn { padding:6px 8px; }
   .username-badge { font-size:0.7rem; padding:3px 8px; }

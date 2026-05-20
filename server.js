@@ -228,6 +228,7 @@ app.post('/api/date-groups/:id/points', authMiddleware, (req, res) => {
       date_group_id: Number(id),
       name: name || 'New Point',
       feet_in: 0, feet_out: 0,
+      note: '',
       units: [],
     });
   } catch (err) {
@@ -270,6 +271,25 @@ app.put('/api/points/:id/feet', authMiddleware, (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Update point feet error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/points/:id/note', authMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+
+    const owner = db.getPointOwner.get(id);
+    if (!owner || owner.user_id !== req.userId) {
+      return res.status(404).json({ error: 'Point not found' });
+    }
+
+    const trimmed = (note || '').slice(0, 300);
+    db.updatePointNote.run(trimmed, id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update point note error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -349,7 +369,7 @@ app.put('/api/units/:id', authMiddleware, (req, res) => {
       return res.status(404).json({ error: 'Unit not found' });
     }
 
-    if (!['UNIT805', 'UNIT807', 'UNIT808', 'UNIT813'].includes(unit_type)) {
+    if (!['UNIT805', 'UNIT806', 'UNIT807', 'UNIT808', 'UNIT813', 'UNIT838', '96 LCP Placement', '288 LCP Placement'].includes(unit_type)) {
       return res.status(400).json({ error: 'Invalid unit type' });
     }
     if (!quantity || quantity < 1 || quantity > 199) {

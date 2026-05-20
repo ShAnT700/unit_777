@@ -58,7 +58,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     point_id INTEGER NOT NULL,
     unit_type TEXT NOT NULL DEFAULT 'UNIT805'
-      CHECK(unit_type IN ('UNIT805','UNIT807','UNIT808','UNIT813')),
+      CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT838','96 LCP Placement','288 LCP Placement')),
     quantity INTEGER NOT NULL DEFAULT 1
       CHECK(quantity BETWEEN 1 AND 199),
     sort_order INTEGER DEFAULT 0,
@@ -71,6 +71,36 @@ db.exec(`
 try { db.exec(`ALTER TABLE date_groups ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE`); } catch (e) {}
 try { db.exec(`ALTER TABLE points ADD COLUMN feet_in INTEGER DEFAULT 0`); } catch (e) {}
 try { db.exec(`ALTER TABLE points ADD COLUMN feet_out INTEGER DEFAULT 0`); } catch (e) {}
+try { db.exec(`ALTER TABLE points ADD COLUMN note TEXT DEFAULT ''`); } catch (e) {}
+
+// Migration: expand unit_type CHECK constraint for new unit types
+(function() {
+  try {
+    db.exec("SAVEPOINT _chk");
+    try {
+      db.prepare("INSERT INTO units (point_id, unit_type, quantity) VALUES (-1, 'UNIT806', 1)").run();
+      db.exec("ROLLBACK TO _chk"); db.exec("RELEASE _chk");
+      return;
+    } catch(e) {
+      db.exec("ROLLBACK TO _chk"); db.exec("RELEASE _chk");
+    }
+    db.transaction(() => {
+      db.exec("ALTER TABLE units RENAME TO _units_old");
+      db.exec(`CREATE TABLE units (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        point_id INTEGER NOT NULL,
+        unit_type TEXT NOT NULL DEFAULT 'UNIT805'
+          CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT838','96 LCP Placement','288 LCP Placement')),
+        quantity INTEGER NOT NULL DEFAULT 1
+          CHECK(quantity BETWEEN 1 AND 199),
+        sort_order INTEGER DEFAULT 0,
+        FOREIGN KEY (point_id) REFERENCES points(id) ON DELETE CASCADE
+      )`);
+      db.exec("INSERT INTO units SELECT * FROM _units_old");
+      db.exec("DROP TABLE _units_old");
+    })();
+  } catch(e) { console.error('Unit types migration:', e.message); }
+})();
 
 // ─── Prepared Statements ───────────────────────────────────────────────────────
 
@@ -83,9 +113,17 @@ const getUserByUsername = db.prepare(
 );
 
 // Projects
-const getProjects = db.prepare(
-  'SELECT * FROM projects WHERE user_id = ? ORDER BY sort_order, id'
-);
+const getProjects = db.prepare(`
+  SELECT p.*, COALESCE(pc.cnt, 0) as point_count
+  FROM projects p
+  LEFT JOIN (
+    SELECT dg.project_id, COUNT(pt.id) as cnt
+    FROM date_groups dg JOIN points pt ON pt.date_group_id = dg.id
+    GROUP BY dg.project_id
+  ) pc ON pc.project_id = p.id
+  WHERE p.user_id = ?
+  ORDER BY p.sort_order, p.id
+`);
 const createProject = db.prepare(
   'INSERT INTO projects (user_id, name) VALUES (?, ?)'
 );
@@ -128,6 +166,9 @@ const updatePoint = db.prepare(
 );
 const updatePointFeet = db.prepare(
   'UPDATE points SET feet_in = ?, feet_out = ? WHERE id = ?'
+);
+const updatePointNote = db.prepare(
+  'UPDATE points SET note = ? WHERE id = ?'
 );
 const deletePoint = db.prepare(
   'DELETE FROM points WHERE id = ?'
@@ -205,6 +246,7 @@ module.exports = {
   getPointOwner,
   updatePointFeet,
   getDistinctPointNames,
+  updatePointNote,
   getUnitsByPoint,
   getUnitCountByPoint,
   createUnit,
