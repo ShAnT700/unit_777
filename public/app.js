@@ -1,14 +1,58 @@
 // Unit 777 — Frontend Application
-const UNIT_PRICES = { UNIT805: 42.19, UNIT806: 45.56, UNIT807: 64.12, UNIT808: 27.00, UNIT813: 9.11, UNIT838: 37.12, '96 LCP Placement': 135.00, '288 LCP Placement': 135.00 };
-const UNIT_LABELS = { UNIT805: 'UNIT805', UNIT806: 'UNIT806', UNIT807: 'UNIT807', UNIT808: 'UNIT808', UNIT813: 'UNIT813', UNIT838: 'UNIT838', '96 LCP Placement': '96 LCP', '288 LCP Placement': '288 LCP' };
-const UNIT_TYPES = Object.keys(UNIT_PRICES);
+const DEFAULT_UNIT_PRICES = {
+  UNIT805: 42.19,
+  UNIT806: 45.56,
+  UNIT807: 64.12,
+  UNIT808: 27.00,
+  UNIT813: 9.11,
+  UNIT814: 8.78,
+  UNIT815: 8.44,
+  UNIT816: 7.76,
+  UNIT838: 37.12,
+  UNIT839: 33.75,
+  '96 LCP Placement': 135.00,
+  '144 LCP Placement': 135.00,
+  '288 LCP Placement': 135.00
+};
+let UNIT_PRICES = { ...DEFAULT_UNIT_PRICES };
+const UNIT_LABELS = {
+  UNIT805: 'UNIT805',
+  UNIT806: 'UNIT806',
+  UNIT807: 'UNIT807',
+  UNIT808: 'UNIT808',
+  UNIT813: 'UNIT813',
+  UNIT814: 'UNIT814',
+  UNIT815: 'UNIT815',
+  UNIT816: 'UNIT816',
+  UNIT838: 'UNIT838',
+  UNIT839: 'UNIT839',
+  '96 LCP Placement': '96 LCP',
+  '144 LCP Placement': '144 LCP',
+  '288 LCP Placement': '288 LCP'
+};
+const UNIT_TYPES = Object.keys(DEFAULT_UNIT_PRICES);
 const MAX_UNITS = 5;
+
+// Cache quantity 1..199 options strings for instantaneous rendering
+const QTY_OPTIONS_CACHE = new Map();
+for (let sel = 1; sel <= 199; sel++) {
+  let s = '';
+  for (let i = 1; i <= 199; i++) {
+    s += `<option value="${i}" ${i === sel ? 'selected' : ''}>${i}</option>`;
+  }
+  QTY_OPTIONS_CACHE.set(sel, s);
+}
+function getQtyOptions(qty) {
+  const n = parseInt(qty, 10) || 1;
+  return QTY_OPTIONS_CACHE.get(n) || QTY_OPTIONS_CACHE.get(1);
+}
+
 let authMode = 'login', token = localStorage.getItem('token'), username = localStorage.getItem('username');
 let projects = [], activeProjectId = null, dateGroups = [], pointNameCache = [], editingDgId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme(localStorage.getItem('theme') || 'dark');
-  if (token) { showDashboard(); loadProjects(); initThursdayPulse(); } else showAuth();
+  if (token) { showDashboard(); loadProjects(); loadUserPrices(); initThursdayPulse(); } else showAuth();
   document.addEventListener('click', e => {
     if (!e.target.closest('.point-name-wrapper')) closeAllAutocomplete();
     if (!e.target.closest('.map-dropdown-wrap')) closeMapDropdown();
@@ -43,11 +87,24 @@ async function handleAuth(e) {
     const res = await fetch(authMode === 'login' ? '/api/auth/login' : '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: user, password: pass }) });
     const data = await res.json(); if (!res.ok) throw new Error(data.error);
     token = data.token; username = data.username; localStorage.setItem('token', token); localStorage.setItem('username', username);
+    await loadUserPrices();
     showDashboard(); loadProjects(); showToast('success', `Welcome${authMode === 'register' ? '' : ' back'}, ${username}!`);
   } catch (err) { errorEl.textContent = err.message; errorEl.style.display = ''; }
   finally { btnText.style.display = ''; btnLoad.style.display = 'none'; }
 }
-function logout() { token = null; username = null; projects = []; dateGroups = []; activeProjectId = null; pointNameCache = []; editingDgId = null; localStorage.removeItem('token'); localStorage.removeItem('username'); closeEditModal(); showAuth(); document.getElementById('auth-form').reset(); }
+function logout() { token = null; username = null; projects = []; dateGroups = []; activeProjectId = null; pointNameCache = []; editingDgId = null; UNIT_PRICES = { ...DEFAULT_UNIT_PRICES }; localStorage.removeItem('token'); localStorage.removeItem('username'); closeEditModal(); closeUnitPricesModal(); showAuth(); document.getElementById('auth-form').reset(); }
+
+async function loadUserPrices() {
+  if (!token) return;
+  try {
+    const data = await api('GET', '/api/user/prices');
+    if (data && data.prices) {
+      UNIT_PRICES = { ...DEFAULT_UNIT_PRICES, ...data.prices };
+    }
+  } catch (e) {
+    console.error('Failed to load user unit prices:', e);
+  }
+}
 
 // ─── API ───
 async function api(method, path, body) {
@@ -111,7 +168,7 @@ function renderContent() {
   if (!dateGroups.length) { c.innerHTML = ''; es.style.display = ''; return; }
   es.style.display = 'none';
   c.innerHTML = dateGroups.map(dg => {
-    const t = calcTotal(dg), pts = dg.points.length, units = dg.points.reduce((s, p) => s + p.units.length, 0);
+    const t = calcTotal(dg), pts = dg.points.length, units = dg.points.reduce((s, p) => s + p.units.reduce((us, u) => us + (Number(u.quantity) || 1), 0), 0);
     const d = formatDate(dg.work_date);
     const thuClass = isThursday(dg.work_date) ? ' thursday' : '';
     return `<div class="date-group${thuClass}" data-dg-id="${dg.id}">
@@ -147,7 +204,7 @@ function renderEditBody(dg) {
   const pointsHTML = dg.points.map((pt, idx) => {
     const uHTML = pt.units.map(u => {
       const tOpts = UNIT_TYPES.map(t => `<option value="${t}" ${t === u.unit_type ? 'selected' : ''}>${UNIT_LABELS[t] || t}</option>`).join('');
-      let qOpts = ''; for (let i = 1; i <= 199; i++) qOpts += `<option value="${i}" ${i === u.quantity ? 'selected' : ''}>${i}</option>`;
+      const qOpts = getQtyOptions(u.quantity);
       return `<div class="unit-row" data-unit-id="${u.id}"><select onchange="updateUnit(${u.id}, this.value, null)" title="Type">${tOpts}</select><select onchange="updateUnit(${u.id}, null, this.value)" title="Qty">${qOpts}</select><button class="btn-icon delete" onclick="deleteUnit(${u.id})" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
     }).join('');
     const canAdd = pt.units.length < MAX_UNITS;
@@ -159,7 +216,10 @@ function renderEditBody(dg) {
   document.getElementById('edit-modal-body').innerHTML = `
     <div class="edit-date-row"><span class="date-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><input type="date" class="date-input" value="${dg.work_date}" onchange="updateDateGroup(${dg.id}, this.value)"></div>
     ${pointsHTML}
-    <button class="add-point-btn" onclick="addPoint(${dg.id})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Point</button>
+    <div class="add-point-actions">
+      <button class="add-point-btn" onclick="addPoint(${dg.id})"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add New Point</button>
+      <button class="copy-last-point-btn ${dg.points.length ? '' : 'disabled'}" onclick="copyPreviousPoint(${dg.id})" ${dg.points.length ? '' : 'disabled'} title="${dg.points.length ? 'Create a new point copying the previous one' : 'Add a point first to enable copy'}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</button>
+    </div>
     <div class="edit-modal-footer"><div class="daily-total"><span class="daily-total-label">Daily Total:</span><span class="daily-total-value">$${total.toFixed(2)}</span></div><button class="copy-excel-btn" onclick="copyForExcel(${dg.id})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy for Excel</button></div>`;
   document.getElementById('edit-modal-date').textContent = formatDate(dg.work_date);
 }
@@ -177,10 +237,100 @@ async function deleteDateGroup(id) { const _dg = dateGroups.find(d => d.id === i
 function sortDG() { dateGroups.sort((a, b) => a.work_date > b.work_date ? -1 : a.work_date < b.work_date ? 1 : b.id - a.id); }
 
 // ─── Point CRUD ───
-async function addPoint(dgId) {
-  try { const pt = await api('POST', `/api/date-groups/${dgId}/points`, { name: 'New Point' }); const dg = dateGroups.find(d => d.id === dgId); if (dg) dg.points.push(pt); { const _p = projects.find(p => p.id === activeProjectId); if (_p) { _p.point_count = (_p.point_count || 0) + 1; renderProjectTabs(); } } if (editingDgId === dgId) { renderEditBody(null); setTimeout(() => { const c = document.querySelector(`[data-point-id="${pt.id}"]`); if (c) { const i = c.querySelector('.point-name-input'); if (i) { i.focus(); i.select(); } } }, 50); } } catch (e) { showToast('error', e.message); }
+function highlightNewPoint(ptId) {
+  setTimeout(() => {
+    const modalBody = document.getElementById('edit-modal-body');
+    const c = document.querySelector(`[data-point-id="${ptId}"]`);
+    if (c) {
+      c.classList.add('point-card-highlight');
+      setTimeout(() => c.classList.remove('point-card-highlight'), 3000);
+    }
+
+    if (modalBody) {
+      try {
+        modalBody.scrollTo({ top: modalBody.scrollHeight, behavior: 'smooth' });
+      } catch (e) {
+        modalBody.scrollTop = modalBody.scrollHeight;
+      }
+    }
+
+    // On mobile devices, do not autofocus to avoid virtual keyboard covering the new point
+    const isMobile = window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (!isMobile && c) {
+      const i = c.querySelector('.point-name-input');
+      if (i) {
+        try { i.focus({ preventScroll: true }); } catch (e) { i.focus(); }
+        i.select();
+      }
+    }
+  }, 60);
+
+  // Guarantee bottom scroll completes after DOM reflow
+  setTimeout(() => {
+    const modalBody = document.getElementById('edit-modal-body');
+    if (modalBody) {
+      try {
+        modalBody.scrollTo({ top: modalBody.scrollHeight, behavior: 'smooth' });
+      } catch (e) {
+        modalBody.scrollTop = modalBody.scrollHeight;
+      }
+    }
+  }, 220);
 }
-async function updatePoint(id, name) { try { await api('PUT', `/api/points/${id}`, { name }); for (const dg of dateGroups) { const pt = dg.points.find(p => p.id === id); if (pt) { pt.name = name; break; } } if (name && name !== 'New Point' && !pointNameCache.includes(name)) pointNameCache.push(name); if (editingDgId) renderEditBody(null); } catch (e) { showToast('error', e.message); } }
+
+async function addPoint(dgId) {
+  try {
+    const pt = await api('POST', `/api/date-groups/${dgId}/points`, { name: 'New Point' });
+    const dg = dateGroups.find(d => d.id === dgId);
+    if (dg) dg.points.push(pt);
+    const _p = projects.find(p => p.id === activeProjectId);
+    if (_p) { _p.point_count = (_p.point_count || 0) + 1; renderProjectTabs(); }
+    if (editingDgId === dgId) {
+      renderEditBody(null);
+      highlightNewPoint(pt.id);
+    }
+  } catch (e) { showToast('error', e.message); }
+}
+async function copyPreviousPoint(dgId) {
+  const dg = dateGroups.find(d => d.id === dgId);
+  if (!dg || !dg.points.length) { showToast('error', 'No point to copy'); return; }
+  const lastPoint = dg.points[dg.points.length - 1];
+
+  // Immediately capture the current value from the DOM input if user was typing
+  const card = document.querySelector(`[data-point-id="${lastPoint.id}"]`);
+  let currentName = lastPoint.name;
+  if (card) {
+    const inp = card.querySelector('.point-name-input');
+    if (inp && inp.value.trim()) {
+      currentName = inp.value.trim();
+      lastPoint.name = currentName;
+    }
+  }
+
+  try {
+    const pt = await api('POST', `/api/points/${lastPoint.id}/clone`, { name: currentName });
+    dg.points.push(pt);
+    const _p = projects.find(p => p.id === activeProjectId);
+    if (_p) { _p.point_count = (_p.point_count || 0) + 1; renderProjectTabs(); }
+    if (editingDgId === dgId) {
+      renderEditBody(null);
+      highlightNewPoint(pt.id);
+    }
+    showToast('success', 'Point copied');
+  } catch (e) { showToast('error', e.message); }
+}
+async function updatePoint(id, name) {
+  try {
+    for (const dg of dateGroups) {
+      const pt = dg.points.find(p => p.id === id);
+      if (pt) { pt.name = name; break; }
+    }
+    if (name && name !== 'New Point' && !pointNameCache.includes(name)) pointNameCache.push(name);
+    const inp = document.querySelector(`[data-point-id="${id}"] .point-name-input`);
+    if (inp && inp.value !== name) inp.value = name;
+    await api('PUT', `/api/points/${id}`, { name });
+  } catch (e) { showToast('error', e.message); }
+}
 async function deletePoint(id, dgId) { try { await api('DELETE', `/api/points/${id}`); const dg = dateGroups.find(d => d.id === dgId); if (dg) dg.points = dg.points.filter(p => p.id !== id); { const _p = projects.find(p => p.id === activeProjectId); if (_p) { _p.point_count = Math.max(0, (_p.point_count || 0) - 1); renderProjectTabs(); } } if (editingDgId === dgId) renderEditBody(null); showToast('success', 'Point deleted'); } catch (e) { showToast('error', e.message); } }
 
 // ─── Unit CRUD ───
@@ -327,11 +477,102 @@ async function showAccount() {
   document.getElementById('dashboard-view').style.display = 'none';
   document.getElementById('account-view').style.display = '';
   document.getElementById('account-username').textContent = username || '';
+  await loadUserPrices();
   loadStats();
 }
 function closeAccount() {
   document.getElementById('account-view').style.display = 'none';
   document.getElementById('dashboard-view').style.display = '';
+}
+
+// ─── Unit Settings Price Modal ───
+function openUnitPricesModal() {
+  const container = document.getElementById('unit-prices-list');
+  if (!container) return;
+  
+  let html = '';
+  for (const type of UNIT_TYPES) {
+    const label = UNIT_LABELS[type] || type;
+    const curPrice = UNIT_PRICES[type] !== undefined ? UNIT_PRICES[type] : (DEFAULT_UNIT_PRICES[type] || 0);
+    const defPrice = DEFAULT_UNIT_PRICES[type] || 0;
+    const isCustom = Math.abs(curPrice - defPrice) > 0.001;
+
+    html += `
+      <div class="unit-price-row">
+        <div class="unit-price-info">
+          <span class="unit-price-name">${esc(label)}</span>
+          <span class="unit-price-default">Standard: $${defPrice.toFixed(2)}${isCustom ? ' <span style="color:var(--amber);font-weight:700;">(Custom)</span>' : ''}</span>
+        </div>
+        <div class="unit-price-input-wrapper">
+          <span class="unit-price-currency">$</span>
+          <input type="number" 
+                 class="unit-price-input" 
+                 data-unit-type="${escA(type)}" 
+                 step="0.01" 
+                 min="0" 
+                 max="99999" 
+                 placeholder="0.00" 
+                 value="${curPrice.toFixed(2)}">
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+  document.getElementById('unit-prices-modal').style.display = '';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeUnitPricesModal() {
+  document.getElementById('unit-prices-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function saveCustomUnitPrices() {
+  const inputs = document.querySelectorAll('.unit-price-input');
+  const newPrices = {};
+
+  inputs.forEach(inp => {
+    const type = inp.getAttribute('data-unit-type');
+    const val = parseFloat(inp.value);
+    newPrices[type] = isNaN(val) || val < 0 ? (DEFAULT_UNIT_PRICES[type] || 0) : Math.round(val * 100) / 100;
+  });
+
+  try {
+    const res = await api('PUT', '/api/user/prices', { prices: newPrices });
+    if (res && res.prices) {
+      UNIT_PRICES = { ...DEFAULT_UNIT_PRICES, ...res.prices };
+    }
+    showToast('success', 'Unit prices saved!');
+    closeUnitPricesModal();
+    if (document.getElementById('account-view').style.display !== 'none') {
+      loadStats();
+    }
+    renderContent();
+  } catch (err) {
+    showToast('error', err.message);
+  }
+}
+
+async function resetUnitPricesToDefaults() {
+  showConfirm('Reset to Defaults?', 'This will reset all your unit prices back to standard defaults.', async () => {
+    try {
+      const res = await api('POST', '/api/user/prices/reset');
+      if (res && res.prices) {
+        UNIT_PRICES = { ...DEFAULT_UNIT_PRICES, ...res.prices };
+      } else {
+        UNIT_PRICES = { ...DEFAULT_UNIT_PRICES };
+      }
+      showToast('success', 'Unit prices reset to defaults');
+      openUnitPricesModal();
+      if (document.getElementById('account-view').style.display !== 'none') {
+        loadStats();
+      }
+      renderContent();
+    } catch (err) {
+      showToast('error', err.message);
+    }
+  });
 }
 async function loadStats() {
   try { const data = await api('GET', '/api/stats'); renderStats(data); }
@@ -358,6 +599,37 @@ function renderStats(data) {
 }
 function fmtMoney(n) { return (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtShort(ds) { if (!ds) return ''; const [y, m, d] = ds.split('-'); return `${parseInt(m)}/${parseInt(d)}`; }
+
+// ─── Backup Download ───
+async function downloadDatabaseBackup() {
+  if (!token) {
+    showToast('error', 'Authentication required');
+    return;
+  }
+  showToast('info', 'Preparing database backup...');
+  try {
+    const res = await fetch('/api/backup/download', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Download failed');
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date().toISOString().slice(0, 10);
+    a.download = `unit777_backup_${now}.db`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    showToast('success', 'Backup downloaded successfully');
+  } catch (err) {
+    showToast('error', err.message);
+  }
+}
 
 // ─── Utilities ───
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }

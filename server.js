@@ -237,6 +237,72 @@ app.post('/api/date-groups/:id/points', authMiddleware, (req, res) => {
   }
 });
 
+app.post('/api/points/:id/clone', authMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name: overrideName } = req.body || {};
+    const owner = db.getPointOwner.get(id);
+    if (!owner || owner.user_id !== req.userId) {
+      return res.status(404).json({ error: 'Point not found' });
+    }
+
+    const orig = db.db.prepare('SELECT * FROM points WHERE id = ?').get(id);
+    if (!orig) {
+      return res.status(404).json({ error: 'Point not found' });
+    }
+
+    const pointName = (overrideName && typeof overrideName === 'string' && overrideName.trim()) ? overrideName.trim() : orig.name;
+
+    // If client supplied a fresher name, also update original point in DB if it differed
+    if (pointName && pointName !== orig.name) {
+      db.updatePoint.run(pointName, id);
+    }
+
+    const origUnits = db.getUnitsByPoint.all(id);
+
+    const cloneTx = db.db.transaction(() => {
+      const resPt = db.db.prepare(
+        'INSERT INTO points (date_group_id, name, feet_in, feet_out, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(orig.date_group_id, pointName, 0, 0, '', (orig.sort_order || 0) + 1);
+
+      const newPointId = Number(resPt.lastInsertRowid);
+      const insertedUnits = [];
+
+      const insertUnitStmt = db.db.prepare(
+        'INSERT INTO units (point_id, unit_type, quantity, sort_order) VALUES (?, ?, ?, ?)'
+      );
+
+      for (const u of origUnits) {
+        const resU = insertUnitStmt.run(newPointId, u.unit_type, u.quantity, u.sort_order || 0);
+        insertedUnits.push({
+          id: Number(resU.lastInsertRowid),
+          point_id: newPointId,
+          unit_type: u.unit_type,
+          quantity: u.quantity,
+          sort_order: u.sort_order || 0,
+        });
+      }
+
+      return {
+        id: newPointId,
+        date_group_id: orig.date_group_id,
+        name: pointName,
+        feet_in: 0,
+        feet_out: 0,
+        note: '',
+        sort_order: (orig.sort_order || 0) + 1,
+        units: insertedUnits,
+      };
+    });
+
+    const newPoint = cloneTx();
+    res.status(201).json(newPoint);
+  } catch (err) {
+    console.error('Clone point error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.put('/api/points/:id', authMiddleware, (req, res) => {
   try {
     const { id } = req.params;
@@ -326,6 +392,11 @@ app.get('/api/point-names', authMiddleware, (req, res) => {
 
 // ─── Unit Routes ────────────────────────────────────────────────────────────────
 
+const ALLOWED_UNIT_TYPES = [
+  'UNIT805', 'UNIT806', 'UNIT807', 'UNIT808', 'UNIT813', 'UNIT814', 'UNIT815', 'UNIT816',
+  'UNIT838', 'UNIT839', '96 LCP Placement', '144 LCP Placement', '288 LCP Placement', '432 LCP Placement'
+];
+
 app.post('/api/points/:id/units', authMiddleware, (req, res) => {
   try {
     const { id } = req.params;
@@ -344,6 +415,9 @@ app.post('/api/points/:id/units', authMiddleware, (req, res) => {
     }
 
     const type = unit_type || 'UNIT805';
+    if (!ALLOWED_UNIT_TYPES.includes(type)) {
+      return res.status(400).json({ error: 'Invalid unit type' });
+    }
     const qty = quantity || 1;
     const result = db.createUnit.run(id, type, qty);
     res.status(201).json({
@@ -369,7 +443,7 @@ app.put('/api/units/:id', authMiddleware, (req, res) => {
       return res.status(404).json({ error: 'Unit not found' });
     }
 
-    if (!['UNIT805', 'UNIT806', 'UNIT807', 'UNIT808', 'UNIT813', 'UNIT838', '96 LCP Placement', '288 LCP Placement'].includes(unit_type)) {
+    if (!ALLOWED_UNIT_TYPES.includes(unit_type)) {
       return res.status(400).json({ error: 'Invalid unit type' });
     }
     if (!quantity || quantity < 1 || quantity > 199) {
@@ -411,17 +485,7 @@ app.get('/api/projects/:projectId/weekly-report', authMiddleware, (req, res) => 
     if (!start || !end) {
       return res.status(400).json({ error: 'start and end dates are required' });
     }
-    const data = db.getDateGroupsByProject.all(req.userId, Number(projectId));
-    const filtered = data
-      .filter(dg => dg.work_date >= start && dg.work_date <= end)
-      .sort((a, b) => a.work_date > b.work_date ? 1 : -1);
-    const result = filtered.map(dg => {
-      const points = db.getPointsByDateGroup.all(dg.id).map(pt => {
-        const units = db.getUnitsByPoint.all(pt.id);
-        return { ...pt, units };
-      });
-      return { ...dg, points };
-    });
+    const result = db.getWeeklyReportData(req.userId, Number(projectId), start, end);
     res.json(result);
   } catch (err) {
     console.error('Weekly report error:', err);
@@ -439,6 +503,70 @@ app.get('/api/stats', authMiddleware, (req, res) => {
   } catch (err) {
     console.error('Get stats error:', err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Unit Prices Routes ────────────────────────────────────────────────────────
+
+app.get('/api/user/prices', authMiddleware, (req, res) => {
+  try {
+    const prices = db.getUserUnitPrices(req.userId);
+    res.json({ prices, defaults: db.DEFAULT_UNIT_PRICES });
+  } catch (err) {
+    console.error('Get user prices error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/user/prices', authMiddleware, (req, res) => {
+  try {
+    const { prices } = req.body;
+    if (!prices || typeof prices !== 'object') {
+      return res.status(400).json({ error: 'Prices object required' });
+    }
+    const updated = db.setUserUnitPrices(req.userId, prices);
+    res.json({ success: true, prices: updated });
+  } catch (err) {
+    console.error('Update user prices error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/user/prices/reset', authMiddleware, (req, res) => {
+  try {
+    const prices = db.resetUserUnitPrices(req.userId);
+    res.json({ success: true, prices });
+  } catch (err) {
+    console.error('Reset user prices error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Database Backup Route ─────────────────────────────────────────────────────
+
+app.get('/api/backup/download', (req, res) => {
+  try {
+    let token = req.query.token;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    jwt.verify(token, JWT_SECRET);
+
+    // Flush WAL to disk so backup contains latest updates
+    db.db.pragma('wal_checkpoint(PASSIVE)');
+
+    const now = new Date().toISOString().slice(0, 10);
+    const filename = `unit777_backup_${now}.db`;
+    res.download(db.DB_PATH, filename);
+  } catch (err) {
+    console.error('Backup download error:', err);
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    res.status(500).json({ error: 'Failed to download backup' });
   }
 });
 

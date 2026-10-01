@@ -129,6 +129,22 @@
     </header>
     <main class="main-content">
       <div class="container">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h2 style="font-size:1.3rem; font-weight:800; letter-spacing:-0.4px;">Account Statistics</h2>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:2px;">Track your work income and customize your rates</p>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <button class="btn btn-secondary" onclick="downloadDatabaseBackup()" style="display:inline-flex; align-items:center; gap:8px;" title="Save database backup to your computer">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Backup
+            </button>
+            <button class="btn btn-amber" onclick="openUnitPricesModal()" style="display:inline-flex; align-items:center; gap:8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Unit Settings Price
+            </button>
+          </div>
+        </div>
         <div class="stats-summary" id="stats-summary"></div>
         <div class="stats-section">
           <h3 class="stats-section-title">
@@ -188,6 +204,40 @@
       </button>
     </div>
     <div id="edit-modal-body" class="edit-modal-body"></div>
+  </div>
+
+  <!-- ═══════════ Unit Settings Price Modal ═══════════ -->
+  <div id="unit-prices-modal" class="edit-modal" style="display:none">
+    <div class="edit-modal-header">
+      <div class="edit-modal-title-area">
+        <div class="edit-modal-titles">
+          <span class="edit-modal-map-label">Rate Customization</span>
+          <span id="unit-prices-modal-title">Unit Settings Price</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="closeUnitPricesModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Close
+        </button>
+      </div>
+    </div>
+    <div id="unit-prices-body" class="edit-modal-body" style="padding:16px;">
+      <div style="margin-bottom:14px; font-size:0.82rem; color:var(--text-secondary); line-height:1.4;">
+        Set your custom rates for each unit type. All calculations, daily totals, and income stats will automatically use these prices.
+      </div>
+      <div id="unit-prices-list" class="unit-prices-grid"></div>
+    </div>
+    <div class="edit-modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="resetUnitPricesToDefaults()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        Reset to Defaults
+      </button>
+      <button class="btn btn-amber btn-sm" onclick="saveCustomUnitPrices()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Save Prices
+      </button>
+    </div>
   </div>
 
   <script src="/app.js"></script>

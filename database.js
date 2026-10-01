@@ -58,11 +58,19 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     point_id INTEGER NOT NULL,
     unit_type TEXT NOT NULL DEFAULT 'UNIT805'
-      CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT838','96 LCP Placement','288 LCP Placement')),
+      CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
     quantity INTEGER NOT NULL DEFAULT 1
       CHECK(quantity BETWEEN 1 AND 199),
     sort_order INTEGER DEFAULT 0,
     FOREIGN KEY (point_id) REFERENCES points(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS user_unit_prices (
+    user_id INTEGER NOT NULL,
+    unit_type TEXT NOT NULL,
+    price REAL NOT NULL,
+    PRIMARY KEY (user_id, unit_type),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 `);
 
@@ -78,7 +86,7 @@ try { db.exec(`ALTER TABLE points ADD COLUMN note TEXT DEFAULT ''`); } catch (e)
   try {
     db.exec("SAVEPOINT _chk");
     try {
-      db.prepare("INSERT INTO units (point_id, unit_type, quantity) VALUES (-1, 'UNIT806', 1)").run();
+      db.prepare("INSERT INTO units (point_id, unit_type, quantity) VALUES (-1, 'UNIT814', 1)").run();
       db.exec("ROLLBACK TO _chk"); db.exec("RELEASE _chk");
       return;
     } catch(e) {
@@ -90,7 +98,7 @@ try { db.exec(`ALTER TABLE points ADD COLUMN note TEXT DEFAULT ''`); } catch (e)
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         point_id INTEGER NOT NULL,
         unit_type TEXT NOT NULL DEFAULT 'UNIT805'
-          CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT838','96 LCP Placement','288 LCP Placement')),
+          CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
         quantity INTEGER NOT NULL DEFAULT 1
           CHECK(quantity BETWEEN 1 AND 199),
         sort_order INTEGER DEFAULT 0,
@@ -101,6 +109,15 @@ try { db.exec(`ALTER TABLE points ADD COLUMN note TEXT DEFAULT ''`); } catch (e)
     })();
   } catch(e) { console.error('Unit types migration:', e.message); }
 })();
+
+// Performance Indexes
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
+  CREATE INDEX IF NOT EXISTS idx_date_groups_user_proj ON date_groups(user_id, project_id);
+  CREATE INDEX IF NOT EXISTS idx_date_groups_work_date ON date_groups(work_date);
+  CREATE INDEX IF NOT EXISTS idx_points_date_group ON points(date_group_id);
+  CREATE INDEX IF NOT EXISTS idx_units_point ON units(point_id);
+`);
 
 // ─── Prepared Statements ───────────────────────────────────────────────────────
 
@@ -217,15 +234,21 @@ const getMonthlyStats = db.prepare(`
     strftime('%Y-%m', dg.work_date) as period,
     COUNT(DISTINCT dg.id) as days,
     COUNT(DISTINCT pt.id) as points,
-    COALESCE(SUM(u.quantity * CASE u.unit_type
+    COALESCE(SUM(u.quantity * COALESCE(uup.price, CASE u.unit_type
       WHEN 'UNIT805' THEN 42.19 WHEN 'UNIT806' THEN 45.56
       WHEN 'UNIT807' THEN 64.12 WHEN 'UNIT808' THEN 27.00
-      WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT838' THEN 37.12
-      WHEN '96 LCP Placement' THEN 135.00 WHEN '288 LCP Placement' THEN 135.00
-      ELSE 0 END), 0) as total
+      WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT814' THEN 8.78
+      WHEN 'UNIT815' THEN 8.44  WHEN 'UNIT816' THEN 7.76
+      WHEN 'UNIT838' THEN 37.12 WHEN 'UNIT839' THEN 33.75
+      WHEN '96 LCP Placement' THEN 135.00
+      WHEN '144 LCP Placement' THEN 135.00
+      WHEN '288 LCP Placement' THEN 135.00
+      WHEN '432 LCP Placement' THEN 135.00
+      ELSE 0 END)), 0) as total
   FROM date_groups dg
   JOIN points pt ON pt.date_group_id = dg.id
   LEFT JOIN units u ON u.point_id = pt.id
+  LEFT JOIN user_unit_prices uup ON uup.user_id = dg.user_id AND uup.unit_type = u.unit_type
   WHERE dg.user_id = ?
   GROUP BY period ORDER BY period DESC LIMIT 12
 `);
@@ -237,36 +260,177 @@ const getWeeklyStats = db.prepare(`
     MAX(dg.work_date) as week_end,
     COUNT(DISTINCT dg.id) as days,
     COUNT(DISTINCT pt.id) as points,
-    COALESCE(SUM(u.quantity * CASE u.unit_type
+    COALESCE(SUM(u.quantity * COALESCE(uup.price, CASE u.unit_type
       WHEN 'UNIT805' THEN 42.19 WHEN 'UNIT806' THEN 45.56
       WHEN 'UNIT807' THEN 64.12 WHEN 'UNIT808' THEN 27.00
-      WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT838' THEN 37.12
-      WHEN '96 LCP Placement' THEN 135.00 WHEN '288 LCP Placement' THEN 135.00
-      ELSE 0 END), 0) as total
+      WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT814' THEN 8.78
+      WHEN 'UNIT815' THEN 8.44  WHEN 'UNIT816' THEN 7.76
+      WHEN 'UNIT838' THEN 37.12 WHEN 'UNIT839' THEN 33.75
+      WHEN '96 LCP Placement' THEN 135.00
+      WHEN '144 LCP Placement' THEN 135.00
+      WHEN '288 LCP Placement' THEN 135.00
+      WHEN '432 LCP Placement' THEN 135.00
+      ELSE 0 END)), 0) as total
   FROM date_groups dg
   JOIN points pt ON pt.date_group_id = dg.id
   LEFT JOIN units u ON u.point_id = pt.id
+  LEFT JOIN user_unit_prices uup ON uup.user_id = dg.user_id AND uup.unit_type = u.unit_type
   WHERE dg.user_id = ?
   GROUP BY period ORDER BY period DESC LIMIT 12
 `);
 
-// ─── Composite Query: Full data tree for a project ─────────────────────────────
+// ─── User Unit Prices ─────────────────────────────────────────────────────────
+
+const DEFAULT_UNIT_PRICES = {
+  UNIT805: 42.19,
+  UNIT806: 45.56,
+  UNIT807: 64.12,
+  UNIT808: 27.00,
+  UNIT813: 9.11,
+  UNIT814: 8.78,
+  UNIT815: 8.44,
+  UNIT816: 7.76,
+  UNIT838: 37.12,
+  UNIT839: 33.75,
+  '96 LCP Placement': 135.00,
+  '144 LCP Placement': 135.00,
+  '288 LCP Placement': 135.00,
+};
+
+const getUserUnitPricesStmt = db.prepare(
+  'SELECT unit_type, price FROM user_unit_prices WHERE user_id = ?'
+);
+const upsertUserUnitPriceStmt = db.prepare(`
+  INSERT INTO user_unit_prices (user_id, unit_type, price)
+  VALUES (?, ?, ?)
+  ON CONFLICT(user_id, unit_type) DO UPDATE SET price = excluded.price
+`);
+const deleteUserUnitPricesStmt = db.prepare(
+  'DELETE FROM user_unit_prices WHERE user_id = ?'
+);
+
+function getUserUnitPrices(userId) {
+  const rows = getUserUnitPricesStmt.all(userId);
+  const result = { ...DEFAULT_UNIT_PRICES };
+  for (const r of rows) {
+    if (result[r.unit_type] !== undefined) {
+      result[r.unit_type] = Number(r.price);
+    }
+  }
+  return result;
+}
+
+function setUserUnitPrices(userId, prices) {
+  const tx = db.transaction(() => {
+    for (const [unitType, price] of Object.entries(prices)) {
+      if (DEFAULT_UNIT_PRICES[unitType] !== undefined) {
+        const p = Math.round(Number(price) * 100) / 100;
+        if (!isNaN(p) && p >= 0) {
+          upsertUserUnitPriceStmt.run(userId, unitType, p);
+        }
+      }
+    }
+  });
+  tx();
+  return getUserUnitPrices(userId);
+}
+
+function resetUserUnitPrices(userId) {
+  deleteUserUnitPricesStmt.run(userId);
+  return { ...DEFAULT_UNIT_PRICES };
+}
+
+// ─── Batch Queries for Full Project Trees and Reports ─────────────────────────
+
+const getPointsByProject = db.prepare(`
+  SELECT pt.*
+  FROM points pt
+  JOIN date_groups dg ON dg.id = pt.date_group_id
+  WHERE dg.user_id = ? AND dg.project_id = ?
+  ORDER BY pt.sort_order, pt.id
+`);
+
+const getUnitsByProject = db.prepare(`
+  SELECT u.*
+  FROM units u
+  JOIN points pt ON pt.id = u.point_id
+  JOIN date_groups dg ON dg.id = pt.date_group_id
+  WHERE dg.user_id = ? AND dg.project_id = ?
+  ORDER BY u.sort_order, u.id
+`);
+
+const getDateGroupsByRange = db.prepare(`
+  SELECT * FROM date_groups
+  WHERE user_id = ? AND project_id = ? AND work_date >= ? AND work_date <= ?
+  ORDER BY work_date ASC, id ASC
+`);
+
+const getPointsByDateRange = db.prepare(`
+  SELECT pt.*
+  FROM points pt
+  JOIN date_groups dg ON dg.id = pt.date_group_id
+  WHERE dg.user_id = ? AND dg.project_id = ? AND dg.work_date >= ? AND dg.work_date <= ?
+  ORDER BY pt.sort_order, pt.id
+`);
+
+const getUnitsByDateRange = db.prepare(`
+  SELECT u.*
+  FROM units u
+  JOIN points pt ON pt.id = u.point_id
+  JOIN date_groups dg ON dg.id = pt.date_group_id
+  WHERE dg.user_id = ? AND dg.project_id = ? AND dg.work_date >= ? AND dg.work_date <= ?
+  ORDER BY u.sort_order, u.id
+`);
+
+function assembleTree(dateGroupsList, allPoints, allUnits) {
+  const unitsByPointId = new Map();
+  for (const u of allUnits) {
+    let list = unitsByPointId.get(u.point_id);
+    if (!list) {
+      list = [];
+      unitsByPointId.set(u.point_id, list);
+    }
+    list.push(u);
+  }
+
+  const pointsByDgId = new Map();
+  for (const pt of allPoints) {
+    pt.units = unitsByPointId.get(pt.id) || [];
+    let list = pointsByDgId.get(pt.date_group_id);
+    if (!list) {
+      list = [];
+      pointsByDgId.set(pt.date_group_id, list);
+    }
+    list.push(pt);
+  }
+
+  return dateGroupsList.map(dg => ({
+    ...dg,
+    points: pointsByDgId.get(dg.id) || []
+  }));
+}
 
 function getFullDataByProject(userId, projectId) {
   const dateGroupsList = getDateGroupsByProject.all(userId, projectId);
-  return dateGroupsList.map(dg => {
-    const points = getPointsByDateGroup.all(dg.id).map(pt => {
-      const units = getUnitsByPoint.all(pt.id);
-      return { ...pt, units };
-    });
-    return { ...dg, points };
-  });
+  if (!dateGroupsList.length) return [];
+  const allPoints = getPointsByProject.all(userId, projectId);
+  const allUnits = getUnitsByProject.all(userId, projectId);
+  return assembleTree(dateGroupsList, allPoints, allUnits);
+}
+
+function getWeeklyReportData(userId, projectId, start, end) {
+  const dateGroupsList = getDateGroupsByRange.all(userId, projectId, start, end);
+  if (!dateGroupsList.length) return [];
+  const allPoints = getPointsByDateRange.all(userId, projectId, start, end);
+  const allUnits = getUnitsByDateRange.all(userId, projectId, start, end);
+  return assembleTree(dateGroupsList, allPoints, allUnits);
 }
 
 // ─── Exports ───────────────────────────────────────────────────────────────────
 
 module.exports = {
   db,
+  DB_PATH,
   createUser,
   getUserByUsername,
   getProjects,
@@ -294,6 +458,11 @@ module.exports = {
   deleteUnit,
   getUnitOwner,
   getFullDataByProject,
+  getWeeklyReportData,
   getMonthlyStats,
   getWeeklyStats,
+  DEFAULT_UNIT_PRICES,
+  getUserUnitPrices,
+  setUserUnitPrices,
+  resetUserUnitPrices,
 };
