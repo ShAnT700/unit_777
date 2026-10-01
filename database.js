@@ -58,7 +58,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     point_id INTEGER NOT NULL,
     unit_type TEXT NOT NULL DEFAULT 'UNIT805'
-      CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
+      CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','Relocacion','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
     quantity INTEGER NOT NULL DEFAULT 1
       CHECK(quantity BETWEEN 1 AND 199),
     sort_order INTEGER DEFAULT 0,
@@ -86,7 +86,7 @@ try { db.exec(`ALTER TABLE points ADD COLUMN note TEXT DEFAULT ''`); } catch (e)
   try {
     db.exec("SAVEPOINT _chk");
     try {
-      db.prepare("INSERT INTO units (point_id, unit_type, quantity) VALUES (-1, 'UNIT814', 1)").run();
+      db.prepare("INSERT INTO units (point_id, unit_type, quantity) VALUES (-1, 'Relocacion', 1)").run();
       db.exec("ROLLBACK TO _chk"); db.exec("RELEASE _chk");
       return;
     } catch(e) {
@@ -98,7 +98,7 @@ try { db.exec(`ALTER TABLE points ADD COLUMN note TEXT DEFAULT ''`); } catch (e)
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         point_id INTEGER NOT NULL,
         unit_type TEXT NOT NULL DEFAULT 'UNIT805'
-          CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
+          CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','Relocacion','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
         quantity INTEGER NOT NULL DEFAULT 1
           CHECK(quantity BETWEEN 1 AND 199),
         sort_order INTEGER DEFAULT 0,
@@ -240,6 +240,7 @@ const getMonthlyStats = db.prepare(`
       WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT814' THEN 8.78
       WHEN 'UNIT815' THEN 8.44  WHEN 'UNIT816' THEN 7.76
       WHEN 'UNIT838' THEN 37.12 WHEN 'UNIT839' THEN 33.75
+      WHEN 'Relocacion' THEN 45.00
       WHEN '96 LCP Placement' THEN 135.00
       WHEN '144 LCP Placement' THEN 135.00
       WHEN '288 LCP Placement' THEN 135.00
@@ -266,6 +267,7 @@ const getWeeklyStats = db.prepare(`
       WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT814' THEN 8.78
       WHEN 'UNIT815' THEN 8.44  WHEN 'UNIT816' THEN 7.76
       WHEN 'UNIT838' THEN 37.12 WHEN 'UNIT839' THEN 33.75
+      WHEN 'Relocacion' THEN 45.00
       WHEN '96 LCP Placement' THEN 135.00
       WHEN '144 LCP Placement' THEN 135.00
       WHEN '288 LCP Placement' THEN 135.00
@@ -292,6 +294,7 @@ const DEFAULT_UNIT_PRICES = {
   UNIT816: 7.76,
   UNIT838: 37.12,
   UNIT839: 33.75,
+  Relocacion: 45.00,
   '96 LCP Placement': 135.00,
   '144 LCP Placement': 135.00,
   '288 LCP Placement': 135.00,

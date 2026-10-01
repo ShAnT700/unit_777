@@ -394,7 +394,7 @@ app.get('/api/point-names', authMiddleware, (req, res) => {
 
 const ALLOWED_UNIT_TYPES = [
   'UNIT805', 'UNIT806', 'UNIT807', 'UNIT808', 'UNIT813', 'UNIT814', 'UNIT815', 'UNIT816',
-  'UNIT838', 'UNIT839', '96 LCP Placement', '144 LCP Placement', '288 LCP Placement', '432 LCP Placement'
+  'UNIT838', 'UNIT839', 'Relocacion', '96 LCP Placement', '144 LCP Placement', '288 LCP Placement', '432 LCP Placement'
 ];
 
 app.post('/api/points/:id/units', authMiddleware, (req, res) => {

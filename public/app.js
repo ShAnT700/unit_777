@@ -10,6 +10,7 @@ const DEFAULT_UNIT_PRICES = {
   UNIT816: 7.76,
   UNIT838: 37.12,
   UNIT839: 33.75,
+  Relocacion: 45.00,
   '96 LCP Placement': 135.00,
   '144 LCP Placement': 135.00,
   '288 LCP Placement': 135.00
@@ -26,6 +27,7 @@ const UNIT_LABELS = {
   UNIT816: 'UNIT816',
   UNIT838: 'UNIT838',
   UNIT839: 'UNIT839',
+  Relocacion: 'Relocacion',
   '96 LCP Placement': '96 LCP',
   '144 LCP Placement': '144 LCP',
   '288 LCP Placement': '288 LCP'
