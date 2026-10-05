@@ -51,6 +51,7 @@ db.exec(`
     date_group_id INTEGER NOT NULL,
     name TEXT NOT NULL DEFAULT 'New Point',
     sort_order INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (date_group_id) REFERENCES date_groups(id) ON DELETE CASCADE
   );
 
@@ -80,6 +81,8 @@ try { db.exec(`ALTER TABLE date_groups ADD COLUMN project_id INTEGER REFERENCES 
 try { db.exec(`ALTER TABLE points ADD COLUMN feet_in INTEGER DEFAULT 0`); } catch (e) {}
 try { db.exec(`ALTER TABLE points ADD COLUMN feet_out INTEGER DEFAULT 0`); } catch (e) {}
 try { db.exec(`ALTER TABLE points ADD COLUMN note TEXT DEFAULT ''`); } catch (e) {}
+try { db.exec(`ALTER TABLE points ADD COLUMN created_at DATETIME`); } catch (e) {}
+try { db.exec(`UPDATE points SET created_at = datetime('now') WHERE created_at IS NULL`); } catch (e) {}
 
 // Migration: expand unit_type CHECK constraint for new unit types
 (function() {
@@ -173,10 +176,10 @@ const getDateGroupOwner = db.prepare(
 
 // Points
 const getPointsByDateGroup = db.prepare(
-  'SELECT * FROM points WHERE date_group_id = ? ORDER BY sort_order, id'
+  'SELECT * FROM points WHERE date_group_id = ? ORDER BY id ASC'
 );
 const createPoint = db.prepare(
-  'INSERT INTO points (date_group_id, name) VALUES (?, ?)'
+  'INSERT INTO points (date_group_id, name, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)'
 );
 const updatePoint = db.prepare(
   'UPDATE points SET name = ? WHERE id = ?'
@@ -350,7 +353,7 @@ const getPointsByProject = db.prepare(`
   FROM points pt
   JOIN date_groups dg ON dg.id = pt.date_group_id
   WHERE dg.user_id = ? AND dg.project_id = ?
-  ORDER BY pt.sort_order, pt.id
+  ORDER BY pt.id ASC
 `);
 
 const getUnitsByProject = db.prepare(`
@@ -373,7 +376,7 @@ const getPointsByDateRange = db.prepare(`
   FROM points pt
   JOIN date_groups dg ON dg.id = pt.date_group_id
   WHERE dg.user_id = ? AND dg.project_id = ? AND dg.work_date >= ? AND dg.work_date <= ?
-  ORDER BY pt.sort_order, pt.id
+  ORDER BY pt.id ASC
 `);
 
 const getUnitsByDateRange = db.prepare(`

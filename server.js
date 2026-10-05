@@ -262,8 +262,8 @@ app.post('/api/points/:id/clone', authMiddleware, (req, res) => {
 
     const cloneTx = db.db.transaction(() => {
       const resPt = db.db.prepare(
-        'INSERT INTO points (date_group_id, name, feet_in, feet_out, note, sort_order) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(orig.date_group_id, pointName, 0, 0, '', (orig.sort_order || 0) + 1);
+        'INSERT INTO points (date_group_id, name, feet_in, feet_out, note, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)'
+      ).run(orig.date_group_id, pointName, 0, 0, '', 0);
 
       const newPointId = Number(resPt.lastInsertRowid);
       const insertedUnits = [];
@@ -290,7 +290,7 @@ app.post('/api/points/:id/clone', authMiddleware, (req, res) => {
         feet_in: 0,
         feet_out: 0,
         note: '',
-        sort_order: (orig.sort_order || 0) + 1,
+        sort_order: 0,
         units: insertedUnits,
       };
     });
