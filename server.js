@@ -2,16 +2,37 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 const db = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'unit777-secret-key-change-in-production';
+if (!process.env.JWT_SECRET) {
+  console.warn('  ⚠️  JWT_SECRET not set. Using default key. Set JWT_SECRET env variable in production.');
+}
 
 // ─── Middleware ─────────────────────────────────────────────────────────────────
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  maxAge: 0,
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+}));
+
+// Rate limiting for auth endpoints — 10 attempts per 15 minutes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -30,7 +51,7 @@ function authMiddleware(req, res, next) {
 
 // ─── Auth Routes ────────────────────────────────────────────────────────────────
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -48,7 +69,7 @@ app.post('/api/auth/register', (req, res) => {
       return res.status(409).json({ error: 'Username already taken' });
     }
 
-    const hash = bcrypt.hashSync(password, 10);
+    const hash = await bcrypt.hash(password, 10);
     const result = db.createUser.run(username, hash);
     const token = jwt.sign({ userId: result.lastInsertRowid }, JWT_SECRET, { expiresIn: '30d' });
 
@@ -59,7 +80,7 @@ app.post('/api/auth/register', (req, res) => {
   }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
@@ -67,7 +88,7 @@ app.post('/api/auth/login', (req, res) => {
     }
 
     const user = db.getUserByUsername.get(username);
-    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
@@ -573,11 +594,30 @@ app.get('/api/backup/download', (req, res) => {
 // ─── SPA Fallback ───────────────────────────────────────────────────────────────
 
 app.get('*', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ─── Start Server ───────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`\n  ⚡ Unit 777 server running at http://localhost:${PORT}\n`);
 });
+
+// ─── Graceful Shutdown ──────────────────────────────────────────────────────────
+
+function shutdown(signal) {
+  console.log(`\n  🛑 ${signal} received. Shutting down gracefully...`);
+  server.close(() => {
+    try { db.db.close(); } catch (e) {}
+    console.log('  ✅ Database closed. Goodbye.\n');
+    process.exit(0);
+  });
+  // Force exit after 5 seconds if server.close hangs
+  setTimeout(() => { process.exit(1); }, 5000);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

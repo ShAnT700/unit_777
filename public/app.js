@@ -13,7 +13,8 @@ const DEFAULT_UNIT_PRICES = {
   Relocacion: 45.00,
   '96 LCP Placement': 135.00,
   '144 LCP Placement': 135.00,
-  '288 LCP Placement': 135.00
+  '288 LCP Placement': 135.00,
+  '432 LCP Placement': 135.00
 };
 let UNIT_PRICES = { ...DEFAULT_UNIT_PRICES };
 const UNIT_LABELS = {
@@ -30,23 +31,24 @@ const UNIT_LABELS = {
   Relocacion: 'Relocacion',
   '96 LCP Placement': '96 LCP',
   '144 LCP Placement': '144 LCP',
-  '288 LCP Placement': '288 LCP'
+  '288 LCP Placement': '288 LCP',
+  '432 LCP Placement': '432 LCP'
 };
 const UNIT_TYPES = Object.keys(DEFAULT_UNIT_PRICES);
 const MAX_UNITS = 5;
 
-// Cache quantity 1..199 options strings for instantaneous rendering
+// Lazy cache for quantity <option> strings — generates on demand instead of 199×199 upfront
 const QTY_OPTIONS_CACHE = new Map();
-for (let sel = 1; sel <= 199; sel++) {
-  let s = '';
-  for (let i = 1; i <= 199; i++) {
-    s += `<option value="${i}" ${i === sel ? 'selected' : ''}>${i}</option>`;
-  }
-  QTY_OPTIONS_CACHE.set(sel, s);
-}
 function getQtyOptions(qty) {
   const n = parseInt(qty, 10) || 1;
-  return QTY_OPTIONS_CACHE.get(n) || QTY_OPTIONS_CACHE.get(1);
+  if (!QTY_OPTIONS_CACHE.has(n)) {
+    let s = '';
+    for (let i = 1; i <= 199; i++) {
+      s += `<option value="${i}" ${i === n ? 'selected' : ''}>${i}</option>`;
+    }
+    QTY_OPTIONS_CACHE.set(n, s);
+  }
+  return QTY_OPTIONS_CACHE.get(n);
 }
 
 let authMode = 'login', token = localStorage.getItem('token'), username = localStorage.getItem('username');
@@ -141,7 +143,7 @@ function renderProjectTabs() {
   dd.innerHTML = projects.map(p => `<div class="map-dropdown-item ${p.id === activeProjectId ? 'active' : ''}" onclick="selectProject(${p.id});closeMapDropdown()">
     <span><span class="map-point-count">${p.point_count || 0}</span>${esc(p.name)}</span>
     <span class="map-dropdown-item-actions">
-      <button class="btn-icon" onclick="event.stopPropagation();closeMapDropdown();promptEditProject(${p.id},'${escA(p.name)}')" title="Rename">${editIcon}</button>
+      <button class="btn-icon" onclick="event.stopPropagation();closeMapDropdown();promptEditProject(${p.id})" title="Rename">${editIcon}</button>
       <button class="btn-icon delete" onclick="event.stopPropagation();closeMapDropdown();confirmDeleteProject(${p.id})" title="Delete">${delIcon}</button>
     </span>
   </div>`).join('') + `<div class="map-dropdown-add" onclick="closeMapDropdown();promptAddProject()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Map</div>`;
@@ -152,12 +154,12 @@ function toggleMapDropdown() {
 }
 function closeMapDropdown() { document.getElementById('map-dropdown').style.display = 'none'; }
 function promptAddProject() { showPrompt('New Map', 'Enter a name for the new map:', '', async n => { if (!n.trim()) return; try { const p = await api('POST', '/api/projects', { name: n.trim() }); projects.push(p); selectProject(p.id); showToast('success', 'Map created'); } catch (e) { showToast('error', e.message); } }); }
-function promptEditProject(id, cur) { showPrompt('Rename Map', 'Enter a new name:', cur, async n => { if (!n.trim()) return; try { await api('PUT', `/api/projects/${id}`, { name: n.trim() }); const p = projects.find(x => x.id === id); if (p) p.name = n.trim(); renderProjectTabs(); if (id === activeProjectId) renderContent(); showToast('success', 'Map renamed'); } catch (e) { showToast('error', e.message); } }); }
+function promptEditProject(id) { const p = projects.find(x => x.id === id); const cur = p ? p.name : ''; showPrompt('Rename Map', 'Enter a new name:', cur, async n => { if (!n.trim()) return; try { await api('PUT', `/api/projects/${id}`, { name: n.trim() }); if (p) p.name = n.trim(); renderProjectTabs(); if (id === activeProjectId) renderContent(); showToast('success', 'Map renamed'); } catch (e) { showToast('error', e.message); } }); }
 function confirmDeleteProject(id) { showConfirm('Delete Map?', 'This will permanently delete this map and ALL its work days.', async () => { try { await api('DELETE', `/api/projects/${id}`); projects = projects.filter(p => p.id !== id); if (activeProjectId === id) { activeProjectId = projects.length > 0 ? projects[0].id : null; if (activeProjectId) selectProject(activeProjectId); else { dateGroups = []; renderProjectTabs(); renderContent(); } } else renderProjectTabs(); showToast('success', 'Map deleted'); } catch (e) { showToast('error', e.message); } }); }
 
 // ─── Point Name Autocomplete ───
 async function loadPointNames() { try { pointNameCache = await api('GET', '/api/point-names'); } catch (e) {} }
-function showAutocomplete(el, pid) { const q = el.value.toLowerCase(); const w = el.closest('.point-name-wrapper'); let dd = w.querySelector('.autocomplete-dropdown'); if (!dd) { dd = document.createElement('div'); dd.className = 'autocomplete-dropdown'; w.appendChild(dd); } const m = pointNameCache.filter(n => n.toLowerCase().includes(q) && n !== el.value); if (!m.length) { dd.classList.remove('visible'); return; } dd.innerHTML = m.slice(0, 12).map(n => `<div class="autocomplete-item" onmousedown="selectAC(${pid},'${escA(n)}')">${esc(n)}</div>`).join(''); dd.classList.add('visible'); }
+function showAutocomplete(el, pid) { const q = el.value.toLowerCase(); const w = el.closest('.point-name-wrapper'); let dd = w.querySelector('.autocomplete-dropdown'); if (!dd) { dd = document.createElement('div'); dd.className = 'autocomplete-dropdown'; w.appendChild(dd); } const m = pointNameCache.filter(n => n.toLowerCase().includes(q) && n !== el.value); if (!m.length) { dd.classList.remove('visible'); return; } dd.innerHTML = m.slice(0, 12).map(n => `<div class="autocomplete-item" data-ac-value="${escA(n)}">${esc(n)}</div>`).join(''); dd.onmousedown = (e) => { const item = e.target.closest('.autocomplete-item'); if (item) selectAC(pid, item.getAttribute('data-ac-value')); }; dd.classList.add('visible'); }
 function selectAC(pid, name) { closeAllAutocomplete(); updatePoint(pid, name); }
 function closeAllAutocomplete() { document.querySelectorAll('.autocomplete-dropdown').forEach(d => d.classList.remove('visible')); }
 
@@ -212,7 +214,7 @@ function renderEditBody(dg) {
     const canAdd = pt.units.length < MAX_UNITS;
     const fIn = pt.feet_in ? pt.feet_in : '', fOut = pt.feet_out ? pt.feet_out : '';
     const ptTotal = calcPointTotal(pt);
-    return `<div class="point-card" data-point-id="${pt.id}"><div class="point-header"><span class="point-number">#${idx+1}</span><span class="point-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span><div class="point-name-wrapper"><input type="text" class="point-name-input" value="${esc(pt.name)}" onchange="updatePoint(${pt.id}, this.value)" onfocus="showAutocomplete(this, ${pt.id})" oninput="showAutocomplete(this, ${pt.id})" onblur="setTimeout(closeAllAutocomplete, 150)" placeholder="Point name" autocomplete="off"></div><button class="copy-name-btn" onclick="copyPointName(this, ${pt.id})" title="Copy name">${copyIcon}</button><div class="point-actions"><button class="btn-icon delete" onclick="confirmDeletePoint(${pt.id}, ${dg.id})" title="Delete point"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></div><div class="feet-row"><span class="feet-label">Feet:</span><input type="number" class="feet-input" value="${fIn}" min="0" max="99999" maxlength="5" placeholder="In" onchange="updatePointFeet(${pt.id}, this.value, null)" title="Feet In"><span class="feet-sep">/</span><input type="number" class="feet-input" value="${fOut}" min="0" max="99999" maxlength="5" placeholder="Out" onchange="updatePointFeet(${pt.id}, null, this.value)" title="Feet Out"></div><div class="units-container">${uHTML}<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><button class="add-unit-btn ${canAdd ? '' : 'disabled'}" onclick="addUnit(${pt.id}, ${dg.id})" ${canAdd ? '' : 'disabled'}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ${canAdd ? 'Add Unit' : 'Max 5'}</button><button class="copy-point-btn" onclick="copyPointDetails(${pt.id})" title="Copy point details">${copyIcon} Copy Point</button></div></div><div class="note-row"><textarea class="note-input" maxlength="300" placeholder="Add a note..." onchange="updatePointNote(${pt.id}, this.value)">${esc(pt.note || '')}</textarea></div><div class="point-total"><span class="point-total-label">Point Total:</span> $${ptTotal.toFixed(2)}</div></div>`;
+    return `<div class="point-card" data-point-id="${pt.id}"><div class="point-header"><span class="point-number">#${idx+1}</span><span class="point-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span><div class="point-name-wrapper"><input type="text" class="point-name-input" value="${esc(pt.name)}" onchange="updatePoint(${pt.id}, this.value)" onfocus="showAutocomplete(this, ${pt.id})" oninput="showAutocomplete(this, ${pt.id})" onblur="setTimeout(closeAllAutocomplete, 150)" placeholder="Point name" autocomplete="off"></div><button class="copy-name-btn" onclick="copyPointName(this, ${pt.id})" title="Copy name">${copyIcon}</button><div class="point-actions"><button class="btn-icon delete" onclick="confirmDeletePoint(${pt.id}, ${dg.id})" title="Delete point"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></div><div class="feet-row"><span class="feet-label">Feet:</span><input type="number" class="feet-input" value="${fIn}" min="0" max="99999" maxlength="5" placeholder="In" oninput="updatePointFeet(${pt.id}, this.value, null)" onchange="updatePointFeet(${pt.id}, this.value, null)" title="Feet In"><span class="feet-sep">/</span><input type="number" class="feet-input" value="${fOut}" min="0" max="99999" maxlength="5" placeholder="Out" oninput="updatePointFeet(${pt.id}, null, this.value)" onchange="updatePointFeet(${pt.id}, null, this.value)" title="Feet Out"></div><div class="units-container">${uHTML}<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><button class="add-unit-btn ${canAdd ? '' : 'disabled'}" onclick="addUnit(${pt.id}, ${dg.id})" ${canAdd ? '' : 'disabled'}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> ${canAdd ? 'Add Unit' : 'Max 5'}</button><button class="copy-point-btn" onclick="copyPointDetails(${pt.id})" title="Copy point details">${copyIcon} Copy Point</button></div></div><div class="note-row"><textarea class="note-input" maxlength="300" placeholder="Add a note..." oninput="updatePointNote(${pt.id}, this.value)" onchange="updatePointNote(${pt.id}, this.value)">${esc(pt.note || '')}</textarea></div><div class="point-total"><span class="point-total-label">Point Total:</span> $${ptTotal.toFixed(2)}</div></div>`;
   }).join('');
 
   document.getElementById('edit-modal-body').innerHTML = `
@@ -321,38 +323,180 @@ async function copyPreviousPoint(dgId) {
     showToast('success', 'Point copied');
   } catch (e) { showToast('error', e.message); }
 }
-async function updatePoint(id, name) {
-  try {
-    for (const dg of dateGroups) {
-      const pt = dg.points.find(p => p.id === id);
-      if (pt) { pt.name = name; break; }
+function refreshTotals(pointId) {
+  const dg = dateGroups.find(d => d.id === editingDgId);
+  if (!dg) return;
+  if (pointId) {
+    const pt = dg.points.find(p => p.id === pointId);
+    if (pt) {
+      const ptTotalEl = document.querySelector(`[data-point-id="${pointId}"] .point-total`);
+      if (ptTotalEl) {
+        ptTotalEl.innerHTML = `<span class="point-total-label">Point Total:</span> $${calcPointTotal(pt).toFixed(2)}`;
+      }
     }
-    if (name && name !== 'New Point' && !pointNameCache.includes(name)) pointNameCache.push(name);
-    const inp = document.querySelector(`[data-point-id="${id}"] .point-name-input`);
-    if (inp && inp.value !== name) inp.value = name;
-    await api('PUT', `/api/points/${id}`, { name });
-  } catch (e) { showToast('error', e.message); }
+  }
+  const dailyTotalEl = document.querySelector('.daily-total-value');
+  if (dailyTotalEl) {
+    dailyTotalEl.textContent = `$${calcTotal(dg).toFixed(2)}`;
+  }
+}
+
+const nameTimers = {};
+function updatePoint(id, name) {
+  for (const dg of dateGroups) {
+    const pt = dg.points.find(p => p.id === id);
+    if (pt) { pt.name = name; break; }
+  }
+  if (name && name !== 'New Point' && !pointNameCache.includes(name)) pointNameCache.push(name);
+  const inp = document.querySelector(`[data-point-id="${id}"] .point-name-input`);
+  if (inp && inp.value !== name) inp.value = name;
+  if (nameTimers[id]) clearTimeout(nameTimers[id]);
+  nameTimers[id] = setTimeout(async () => {
+    try {
+      await api('PUT', `/api/points/${id}`, { name });
+    } catch (e) {
+      showToast('error', e.message);
+    }
+  }, 250);
 }
 async function deletePoint(id, dgId) { try { await api('DELETE', `/api/points/${id}`); const dg = dateGroups.find(d => d.id === dgId); if (dg) dg.points = dg.points.filter(p => p.id !== id); { const _p = projects.find(p => p.id === activeProjectId); if (_p) { _p.point_count = Math.max(0, (_p.point_count || 0) - 1); renderProjectTabs(); } } if (editingDgId === dgId) renderEditBody(null); showToast('success', 'Point deleted'); } catch (e) { showToast('error', e.message); } }
 
 // ─── Unit CRUD ───
-async function addUnit(pid, dgId) { try { const u = await api('POST', `/api/points/${pid}/units`, { unit_type: 'UNIT805', quantity: 1 }); for (const dg of dateGroups) { const pt = dg.points.find(p => p.id === pid); if (pt) { pt.units.push(u); break; } } if (editingDgId) renderEditBody(null); } catch (e) { showToast('error', e.message); } }
-async function updateUnit(id, uType, qty) { try { let cur = null; for (const dg of dateGroups) { for (const pt of dg.points) { const u = pt.units.find(u => u.id === id); if (u) { cur = u; break; } } if (cur) break; } if (!cur) return; const nT = uType || cur.unit_type, nQ = qty ? parseInt(qty) : cur.quantity; await api('PUT', `/api/units/${id}`, { unit_type: nT, quantity: nQ }); cur.unit_type = nT; cur.quantity = nQ; if (editingDgId) renderEditBody(null); } catch (e) { showToast('error', e.message); } }
-async function deleteUnit(id) { try { await api('DELETE', `/api/units/${id}`); for (const dg of dateGroups) for (const pt of dg.points) pt.units = pt.units.filter(u => u.id !== id); if (editingDgId) renderEditBody(null); } catch (e) { showToast('error', e.message); } }
+async function addUnit(pid, dgId) {
+  try {
+    const u = await api('POST', `/api/points/${pid}/units`, { unit_type: 'UNIT805', quantity: 1 });
+    let targetPt = null;
+    for (const dg of dateGroups) {
+      const pt = dg.points.find(p => p.id === pid);
+      if (pt) { pt.units.push(u); targetPt = pt; break; }
+    }
+    const card = document.querySelector(`[data-point-id="${pid}"]`);
+    if (card && targetPt) {
+      const container = card.querySelector('.units-container');
+      const addRow = container ? container.lastElementChild : null;
+      if (container && addRow) {
+        const tOpts = UNIT_TYPES.map(t => `<option value="${t}" ${t === u.unit_type ? 'selected' : ''}>${UNIT_LABELS[t] || t}</option>`).join('');
+        const qOpts = getQtyOptions(u.quantity);
+        const div = document.createElement('div');
+        div.className = 'unit-row';
+        div.setAttribute('data-unit-id', u.id);
+        div.innerHTML = `<select onchange="updateUnit(${u.id}, this.value, null)" title="Type">${tOpts}</select><select onchange="updateUnit(${u.id}, null, this.value)" title="Qty">${qOpts}</select><button class="btn-icon delete" onclick="deleteUnit(${u.id})" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+        container.insertBefore(div, addRow);
+        if (targetPt.units.length >= MAX_UNITS) {
+          const addBtn = card.querySelector('.add-unit-btn');
+          if (addBtn) {
+            addBtn.classList.add('disabled');
+            addBtn.setAttribute('disabled', 'true');
+            addBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Max 5`;
+          }
+        }
+      }
+      refreshTotals(pid);
+    } else if (editingDgId) {
+      renderEditBody(null);
+    }
+  } catch (e) { showToast('error', e.message); }
+}
+
+async function updateUnit(id, uType, qty) {
+  try {
+    let cur = null, targetPoint = null;
+    for (const dg of dateGroups) {
+      for (const pt of dg.points) {
+        const u = pt.units.find(u => u.id === id);
+        if (u) { cur = u; targetPoint = pt; break; }
+      }
+      if (cur) break;
+    }
+    if (!cur) return;
+    const nT = uType || cur.unit_type, nQ = qty ? parseInt(qty, 10) : cur.quantity;
+    cur.unit_type = nT;
+    cur.quantity = nQ;
+    if (targetPoint) {
+      refreshTotals(targetPoint.id);
+    }
+    await api('PUT', `/api/units/${id}`, { unit_type: nT, quantity: nQ });
+  } catch (e) {
+    showToast('error', e.message);
+  }
+}
+
+async function deleteUnit(id) {
+  try {
+    let targetPoint = null;
+    for (const dg of dateGroups) {
+      for (const pt of dg.points) {
+        const idx = pt.units.findIndex(u => u.id === id);
+        if (idx !== -1) {
+          pt.units.splice(idx, 1);
+          targetPoint = pt;
+          break;
+        }
+      }
+      if (targetPoint) break;
+    }
+    const row = document.querySelector(`.unit-row[data-unit-id="${id}"]`);
+    if (row) row.remove();
+    if (targetPoint) {
+      const card = document.querySelector(`[data-point-id="${targetPoint.id}"]`);
+      if (card) {
+        const addBtn = card.querySelector('.add-unit-btn');
+        if (addBtn && targetPoint.units.length < MAX_UNITS) {
+          addBtn.classList.remove('disabled');
+          addBtn.removeAttribute('disabled');
+          addBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Unit`;
+        }
+      }
+      refreshTotals(targetPoint.id);
+    }
+    await api('DELETE', `/api/units/${id}`);
+  } catch (e) {
+    showToast('error', e.message);
+  }
+}
 
 // ─── Point Feet ───
-async function updatePointFeet(pid, fIn, fOut) {
-  let pt = null; for (const dg of dateGroups) { pt = dg.points.find(p => p.id === pid); if (pt) break; } if (!pt) return;
-  const newIn = fIn !== null ? Math.max(0, Math.min(99999, parseInt(fIn) || 0)) : pt.feet_in || 0;
-  const newOut = fOut !== null ? Math.max(0, Math.min(99999, parseInt(fOut) || 0)) : pt.feet_out || 0;
-  try { await api('PUT', `/api/points/${pid}/feet`, { feet_in: newIn, feet_out: newOut }); pt.feet_in = newIn; pt.feet_out = newOut; } catch (e) { showToast('error', e.message); }
+const feetTimers = {};
+function updatePointFeet(pid, fIn, fOut) {
+  let pt = null;
+  for (const dg of dateGroups) {
+    pt = dg.points.find(p => p.id === pid);
+    if (pt) break;
+  }
+  if (!pt) return;
+  const newIn = fIn !== null ? Math.max(0, Math.min(99999, parseInt(fIn, 10) || 0)) : (pt.feet_in || 0);
+  const newOut = fOut !== null ? Math.max(0, Math.min(99999, parseInt(fOut, 10) || 0)) : (pt.feet_out || 0);
+  pt.feet_in = newIn;
+  pt.feet_out = newOut;
+  if (feetTimers[pid]) clearTimeout(feetTimers[pid]);
+  feetTimers[pid] = setTimeout(async () => {
+    try {
+      await api('PUT', `/api/points/${pid}/feet`, { feet_in: newIn, feet_out: newOut });
+    } catch (e) {
+      showToast('error', e.message);
+    }
+  }, 400);
 }
 
 // ─── Point Note ───
-async function updatePointNote(pid, note) {
-  let pt = null; for (const dg of dateGroups) { pt = dg.points.find(p => p.id === pid); if (pt) break; } if (!pt) return;
+const noteTimers = {};
+function updatePointNote(pid, note) {
+  let pt = null;
+  for (const dg of dateGroups) {
+    pt = dg.points.find(p => p.id === pid);
+    if (pt) break;
+  }
+  if (!pt) return;
   const trimmed = (note || '').slice(0, 300);
-  try { await api('PUT', `/api/points/${pid}/note`, { note: trimmed }); pt.note = trimmed; } catch (e) { showToast('error', e.message); }
+  pt.note = trimmed;
+  if (noteTimers[pid]) clearTimeout(noteTimers[pid]);
+  noteTimers[pid] = setTimeout(async () => {
+    try {
+      await api('PUT', `/api/points/${pid}/note`, { note: trimmed });
+    } catch (e) {
+      showToast('error', e.message);
+    }
+  }, 400);
 }
 
 // ─── Copy Point Name ───
@@ -387,9 +531,41 @@ async function copyForExcel(dgId) { const dg = dateGroups.find(d => d.id === dgI
 // ─── Dialogs ───
 function confirmDeleteDateGroup(id) { showConfirm('Delete Work Day?', 'This will permanently delete all points and units for this day.', () => deleteDateGroup(id)); }
 function confirmDeletePoint(id, dgId) { showConfirm('Delete Point?', 'This will permanently delete this point and all its units.', () => deletePoint(id, dgId)); }
-function showConfirm(title, msg, onOk) { const ov = document.createElement('div'); ov.className = 'confirm-overlay'; ov.innerHTML = `<div class="confirm-dialog"><h3>${title}</h3><p>${msg}</p><div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="confirm-cancel">Cancel</button><button class="btn btn-danger btn-sm" id="confirm-ok">Delete</button></div></div>`; document.body.appendChild(ov); ov.querySelector('#confirm-cancel').onclick = () => ov.remove(); ov.querySelector('#confirm-ok').onclick = () => { ov.remove(); onOk(); }; ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); }); }
-function showPrompt(title, msg, def, onOk) { const ov = document.createElement('div'); ov.className = 'confirm-overlay'; ov.innerHTML = `<div class="confirm-dialog"><h3>${title}</h3><p>${msg}</p><input class="prompt-input" type="text" value="${escA(def)}" /><div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="prompt-cancel">Cancel</button><button class="btn btn-primary btn-sm" id="prompt-ok">OK</button></div></div>`; document.body.appendChild(ov); const inp = ov.querySelector('.prompt-input'); setTimeout(() => { inp.focus(); inp.select(); }, 50); inp.addEventListener('keydown', e => { if (e.key === 'Enter') { ov.remove(); onOk(inp.value); } }); ov.querySelector('#prompt-cancel').onclick = () => ov.remove(); ov.querySelector('#prompt-ok').onclick = () => { ov.remove(); onOk(inp.value); }; ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); }); }
-function showToast(type, msg) { const c = document.getElementById('toast-container'), t = document.createElement('div'); t.className = `toast ${type}`; t.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✕'}</span><span>${esc(msg)}</span>`; c.appendChild(t); setTimeout(() => { t.classList.add('hide'); setTimeout(() => t.remove(), 300); }, 3000); }
+function showConfirm(title, msg, onOk) {
+  const ov = document.createElement('div');
+  ov.className = 'confirm-overlay';
+  ov.innerHTML = `<div class="confirm-dialog"><h3></h3><p></p><div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="confirm-cancel">Cancel</button><button class="btn btn-danger btn-sm" id="confirm-ok">Delete</button></div></div>`;
+  ov.querySelector('h3').textContent = title;
+  ov.querySelector('p').textContent = msg;
+  document.body.appendChild(ov);
+  ov.querySelector('#confirm-cancel').onclick = () => ov.remove();
+  ov.querySelector('#confirm-ok').onclick = () => { ov.remove(); onOk(); };
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+}
+function showPrompt(title, msg, def, onOk) {
+  const ov = document.createElement('div');
+  ov.className = 'confirm-overlay';
+  ov.innerHTML = `<div class="confirm-dialog"><h3></h3><p></p><input class="prompt-input" type="text" /><div class="confirm-actions"><button class="btn btn-ghost btn-sm" id="prompt-cancel">Cancel</button><button class="btn btn-primary btn-sm" id="prompt-ok">OK</button></div></div>`;
+  ov.querySelector('h3').textContent = title;
+  ov.querySelector('p').textContent = msg;
+  const inp = ov.querySelector('.prompt-input');
+  inp.value = def || '';
+  document.body.appendChild(ov);
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { ov.remove(); onOk(inp.value); } });
+  ov.querySelector('#prompt-cancel').onclick = () => ov.remove();
+  ov.querySelector('#prompt-ok').onclick = () => { ov.remove(); onOk(inp.value); };
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+}
+function showToast(type, msg) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✕'}</span><span class="toast-msg"></span>`;
+  t.querySelector('.toast-msg').textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.classList.add('hide'); setTimeout(() => t.remove(), 300); }, 3000);
+}
 
 // ─── Weekly Report (Fri→Thu) ───
 let wrOffset = 0;
@@ -634,8 +810,24 @@ async function downloadDatabaseBackup() {
 }
 
 // ─── Utilities ───
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function escA(s) { return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+function escA(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 function formatDate(ds) {
   const [y, m, d] = ds.split('-');
   const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));

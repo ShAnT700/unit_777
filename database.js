@@ -301,6 +301,7 @@ const DEFAULT_UNIT_PRICES = {
   '96 LCP Placement': 135.00,
   '144 LCP Placement': 135.00,
   '288 LCP Placement': 135.00,
+  '432 LCP Placement': 135.00,
 };
 
 const getUserUnitPricesStmt = db.prepare(
