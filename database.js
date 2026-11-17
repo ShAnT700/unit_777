@@ -59,7 +59,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     point_id INTEGER NOT NULL,
     unit_type TEXT NOT NULL DEFAULT 'UNIT805'
-      CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','Relocacion','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
+      CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','UNIT850','Relocacion','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
     quantity INTEGER NOT NULL DEFAULT 1
       CHECK(quantity BETWEEN 1 AND 199),
     sort_order INTEGER DEFAULT 0,
@@ -87,21 +87,18 @@ try { db.exec(`UPDATE points SET created_at = datetime('now') WHERE created_at I
 // Migration: expand unit_type CHECK constraint for new unit types
 (function() {
   try {
-    db.exec("SAVEPOINT _chk");
-    try {
-      db.prepare("INSERT INTO units (point_id, unit_type, quantity) VALUES (-1, 'Relocacion', 1)").run();
-      db.exec("ROLLBACK TO _chk"); db.exec("RELEASE _chk");
+    const tableSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'units'").get()?.sql || '';
+    if (tableSql.includes('UNIT850')) {
       return;
-    } catch(e) {
-      db.exec("ROLLBACK TO _chk"); db.exec("RELEASE _chk");
     }
+    db.pragma('foreign_keys = OFF');
     db.transaction(() => {
       db.exec("ALTER TABLE units RENAME TO _units_old");
       db.exec(`CREATE TABLE units (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         point_id INTEGER NOT NULL,
         unit_type TEXT NOT NULL DEFAULT 'UNIT805'
-          CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','Relocacion','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
+          CHECK(unit_type IN ('UNIT805','UNIT806','UNIT807','UNIT808','UNIT813','UNIT814','UNIT815','UNIT816','UNIT838','UNIT839','UNIT850','Relocacion','96 LCP Placement','144 LCP Placement','288 LCP Placement','432 LCP Placement')),
         quantity INTEGER NOT NULL DEFAULT 1
           CHECK(quantity BETWEEN 1 AND 199),
         sort_order INTEGER DEFAULT 0,
@@ -110,6 +107,7 @@ try { db.exec(`UPDATE points SET created_at = datetime('now') WHERE created_at I
       db.exec("INSERT INTO units SELECT * FROM _units_old");
       db.exec("DROP TABLE _units_old");
     })();
+    db.pragma('foreign_keys = ON');
   } catch(e) { console.error('Unit types migration:', e.message); }
 })();
 
@@ -243,6 +241,7 @@ const getMonthlyStats = db.prepare(`
       WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT814' THEN 8.78
       WHEN 'UNIT815' THEN 8.44  WHEN 'UNIT816' THEN 7.76
       WHEN 'UNIT838' THEN 37.12 WHEN 'UNIT839' THEN 33.75
+      WHEN 'UNIT850' THEN 42.19
       WHEN 'Relocacion' THEN 45.00
       WHEN '96 LCP Placement' THEN 135.00
       WHEN '144 LCP Placement' THEN 135.00
@@ -270,6 +269,7 @@ const getWeeklyStats = db.prepare(`
       WHEN 'UNIT813' THEN 9.11  WHEN 'UNIT814' THEN 8.78
       WHEN 'UNIT815' THEN 8.44  WHEN 'UNIT816' THEN 7.76
       WHEN 'UNIT838' THEN 37.12 WHEN 'UNIT839' THEN 33.75
+      WHEN 'UNIT850' THEN 42.19
       WHEN 'Relocacion' THEN 45.00
       WHEN '96 LCP Placement' THEN 135.00
       WHEN '144 LCP Placement' THEN 135.00
@@ -297,6 +297,7 @@ const DEFAULT_UNIT_PRICES = {
   UNIT816: 7.76,
   UNIT838: 37.12,
   UNIT839: 33.75,
+  UNIT850: 42.19,
   Relocacion: 45.00,
   '96 LCP Placement': 135.00,
   '144 LCP Placement': 135.00,
